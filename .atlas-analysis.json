@@ -1,0 +1,105 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "LAFT",
+  "projectDescription": "Language-Assisted Feature Transformation for Anomaly Detection using vision-language models",
+  "theme": "aspen",
+  "primaryColor": "#b21e1e",
+  "lightColor": "#e59f82",
+  "darkColor": "#e0dbd9",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/feature-transformation",
+              "concepts/concept-subspace"
+            ]
+          },
+          {
+            "group": "Datasets",
+            "pages": [
+              "datasets/semantic-datasets",
+              "datasets/industrial-datasets"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/basic-usage",
+              "guides/prompts",
+              "guides/evaluation"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Functions",
+            "pages": [
+              "api/transformation",
+              "api/clip",
+              "api/metrics"
+            ]
+          },
+          {
+            "group": "Datasets",
+            "pages": [
+              "api/datasets"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/prompts",
+              "api/utils"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Language-guided feature transformation using CLIP",
+    "Concept subspace construction with PCA",
+    "Inner and orthogonal projection operations",
+    "Support for semantic and industrial anomaly detection",
+    "Comprehensive evaluation metrics (AUROC, AUPRC, FPR95)",
+    "Pre-built dataset loaders and prompt utilities"
+  ],
+  "publicApiSurface": [
+    "laft.load_clip()",
+    "laft.inner()",
+    "laft.orthogonal()",
+    "laft.pca()",
+    "laft.prompt_pair()",
+    "laft.cosine_similarity()",
+    "laft.cosine_distance()",
+    "laft.knn()",
+    "laft.align_vectors()",
+    "laft.build_semantic_dataset()",
+    "laft.build_industrial_dataset()",
+    "laft.prompts.get_prompts()",
+    "laft.binary_auroc()",
+    "laft.binary_auprc()",
+    "laft.binary_f1_score()",
+    "laft.binary_accuracy()",
+    "laft.binary_fpr95()",
+    "laft.binary_metrics()",
+    "laft.get_clip_cached_features()",
+    "laft.build_table()"
+  ]
+}
