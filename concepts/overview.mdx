@@ -1,0 +1,228 @@
+---
+title: 'LAFT Overview'
+description: 'Understanding Language-Assisted Feature Transformation for Anomaly Detection'
+---
+
+## What is LAFT?
+
+LAFT (Language-Assisted Feature Transformation) is a novel approach for anomaly detection that uses natural language guidance to transform image features extracted from vision-language models like CLIP. By leveraging semantic understanding from text prompts, LAFT can guide or suppress specific visual concepts to improve anomaly detection performance.
+
+<Info>
+  LAFT was published at ICLR 2025: "Language-Assisted Feature Transformation for Anomaly Detection" by EungGu Yun, Heonjin Ha, Yeongwoo Nam, and Bryan Dongik Lee.
+</Info>
+
+## Core Methodology
+
+The LAFT methodology consists of three key stages:
+
+### 1. Text Prompt Design
+
+Define descriptive text prompts that capture the semantic concepts relevant to your detection task:
+
+```python
+import laft
+
+# For industrial defect detection
+normal_prompts = [
+    "a photo of a flawless bottle",
+    "a photo of a perfect bottle",
+    "a photo of an unblemished bottle",
+]
+
+anomaly_prompts = [
+    "a photo of a damaged bottle",
+    "a photo of a bottle with defect",
+    "a photo of a bottle with flaw",
+]
+```
+
+These prompts are then encoded using CLIP's text encoder to obtain semantic embeddings.
+
+### 2. Concept Subspace Construction
+
+LAFT constructs a **concept subspace** that captures the semantic direction of interest by:
+
+1. Computing pairwise differences between prompt embeddings
+2. Aligning these difference vectors
+3. Extracting principal components via PCA
+
+```python
+# Load CLIP model
+model, transform = laft.load_clip("ViT-B-16-quickgelu:dfn2b")
+
+# Encode text prompts
+text_features = model.encode_text(all_prompts)
+
+# Compute pairwise differences and align
+pair_diffs = laft.prompt_pair(text_features)
+
+# Extract concept basis via PCA
+concept_basis = laft.pca(pair_diffs, n_components=24)
+```
+
+The resulting `concept_basis` is an orthonormal basis that spans the subspace representing the semantic concept.
+
+### 3. Feature Transformation
+
+Once the concept subspace is constructed, LAFT applies one of two projection operations:
+
+**Inner Projection (Guide)** - Projects features *onto* the concept subspace:
+```python
+guided_features = laft.inner(image_features, concept_basis)
+```
+
+This amplifies the specified concept in the feature representation.
+
+**Orthogonal Projection (Ignore)** - Projects features *away from* the concept subspace:
+```python
+ignored_features = laft.orthogonal(image_features, concept_basis)
+```
+
+This suppresses the specified concept in the feature representation.
+
+## The LAFT Workflow
+
+<Steps>
+  <Step title="Encode Images">
+    Extract visual features from images using CLIP's image encoder:
+    ```python
+    image_features = model.encode_image(images)
+    ```
+  </Step>
+  
+  <Step title="Define Semantic Concepts">
+    Create text prompts describing normal and anomalous states:
+    ```python
+    prompts = laft.prompts.get_prompts("mvtec", "bottle")
+    ```
+  </Step>
+  
+  <Step title="Build Concept Subspace">
+    Construct the subspace from prompt embeddings:
+    ```python
+    text_features = model.encode_text(prompts["all"])
+    pair_diffs = laft.prompt_pair(text_features)
+    concept_basis = laft.pca(pair_diffs)
+    ```
+  </Step>
+  
+  <Step title="Transform Features">
+    Apply inner or orthogonal projection:
+    ```python
+    transformed_features = laft.inner(image_features, concept_basis)
+    ```
+  </Step>
+  
+  <Step title="Detect Anomalies">
+    Use k-NN on transformed features for anomaly scoring:
+    ```python
+    scores = laft.knn(train_features, test_features, n_neighbors=30)
+    ```
+  </Step>
+</Steps>
+
+## Vision-Language Models and CLIP
+
+LAFT leverages **CLIP** (Contrastive Language-Image Pre-training), a vision-language model that learns joint representations of images and text. CLIP consists of:
+
+- **Image Encoder**: Extracts visual features from images (e.g., ViT-B/16)
+- **Text Encoder**: Extracts semantic features from text (e.g., Transformer)
+- **Shared Embedding Space**: Both modalities are projected into a common space where semantically similar images and text have high cosine similarity
+
+This shared space enables LAFT to use text prompts to guide visual feature transformations.
+
+```python
+# LAFT provides an enhanced CLIP wrapper
+model, transform = laft.load_clip(
+    "ViT-B-16-quickgelu:dfn2b",
+    device="cuda",
+    download_root="./checkpoints/open_clip"
+)
+
+# Encode images
+image_features = model.encode_image(images)  # [batch_size, 512]
+
+# Encode text with ensemble support
+text_features = model.encode_text([
+    ["a photo of a cat", "a picture of a cat"],  # Ensemble for "cat"
+    ["a photo of a dog", "a picture of a dog"],  # Ensemble for "dog"
+])  # [2, 512]
+```
+
+<Note>
+  The LAFT CLIP wrapper in `laft/clip.py` extends OpenCLIP with convenient ensemble encoding - when you pass a list of prompt lists, it automatically averages embeddings for each group.
+</Note>
+
+## Key Advantages
+
+<CardGroup cols={2}>
+  <Card title="Language Guidance" icon="message">
+    Use natural language to specify which visual concepts to emphasize or suppress, without requiring labeled training data for those concepts.
+  </Card>
+  
+  <Card title="Flexible Transformations" icon="arrows-rotate">
+    Choose between inner (guide) and orthogonal (ignore) projections based on your detection objective.
+  </Card>
+  
+  <Card title="Interpretable" icon="magnifying-glass">
+    The concept subspace has clear semantic meaning derived from your text prompts, making the transformation interpretable.
+  </Card>
+  
+  <Card title="Few-Shot Capable" icon="gauge-high">
+    Works effectively even with limited normal training samples, leveraging CLIP's pre-trained knowledge.
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+### Semantic Anomaly Detection
+
+Detect spurious correlations in datasets like Waterbirds:
+- **Guide bird type**: Emphasize bird species while ignoring background
+- **Ignore background**: Suppress background features to focus on the bird
+
+```python
+prompts = laft.prompts.get_prompts("waterbirds", "guide_bird")
+```
+
+### Industrial Defect Detection
+
+Identify manufacturing defects in products:
+- Encode "damaged", "scratched", "broken" states
+- Project away from normal "flawless", "perfect" states
+
+```python
+normal_prompts, anomaly_prompts = laft.prompts.industrial1.get_prompts("bottle")
+```
+
+## Mathematical Formulation
+
+Given:
+- Image features $\mathbf{f} \in \mathbb{R}^d$ from CLIP image encoder
+- Concept basis $\mathbf{V} \in \mathbb{R}^{k \times d}$ (orthonormal rows)
+
+LAFT computes:
+
+**Inner Projection:**
+$$
+\mathbf{f}_{\text{inner}} = \mathbf{f} \mathbf{V}^T \mathbf{V}
+$$
+
+**Orthogonal Projection:**
+$$
+\mathbf{f}_{\text{orth}} = \mathbf{f} - \mathbf{f} \mathbf{V}^T \mathbf{V}
+$$
+
+See [Feature Transformation](/concepts/feature-transformation) for detailed mathematical derivations and implementation details.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Feature Transformation" icon="function" href="/concepts/feature-transformation">
+    Deep dive into inner and orthogonal projections
+  </Card>
+  
+  <Card title="Concept Subspace" icon="cube" href="/concepts/concept-subspace">
+    Learn how to construct effective concept subspaces
+  </Card>
+</CardGroup>

@@ -1,0 +1,504 @@
+---
+title: Industrial Anomaly Datasets
+description: Learn about MVTec AD and VisA datasets for industrial defect detection with pixel-level annotations
+---
+
+# Industrial Anomaly Datasets
+
+Industrial anomaly datasets focus on detecting manufacturing defects with pixel-level ground truth masks. LAFT supports MVTec AD and VisA, two widely-used benchmarks for industrial anomaly detection.
+
+## Overview
+
+Industrial datasets inherit from `IndustrialAnomalyDataset` and provide:
+
+- **Image-level labels**: Boolean tensor indicating normal (False) or anomalous (True)
+- **Pixel-level masks**: Binary masks showing exact defect locations
+- **Category-based**: Each dataset has multiple object categories (bottles, cables, etc.)
+- **Mask transforms**: Apply transformations to both images and masks
+
+### Building an Industrial Dataset
+
+Use the `build_industrial_dataset()` function to load MVTec AD or VisA:
+
+```python
+from laft.datasets import build_industrial_dataset
+from torchvision import transforms
+import torch
+
+image_transform = transforms.Compose([
+    transforms.Resize(224),
+    transforms.ToTensor(),
+])
+
+mask_transform = transforms.Compose([
+    transforms.Resize(224),
+    transforms.Lambda(lambda x: x.float()),
+])
+
+dataset = build_industrial_dataset(
+    name="mvtec",              # or "visa"
+    category="bottle",         # object category
+    split="test",              # "train" or "test"
+    root="./data",
+    transform=image_transform,
+    mask_transform=mask_transform,
+)
+
+image, mask, label = dataset[0]
+print(f"Label: {label}")  # True if anomalous
+print(f"Mask shape: {mask.shape}")  # [H, W], bool tensor
+```
+
+<Note>
+Mask transforms are applied to boolean tensors. Convert to float if needed for operations like resizing.
+</Note>
+
+## MVTec AD
+
+MVTec Anomaly Detection (MVTec AD) is the most widely-used benchmark for industrial anomaly detection, containing 15 object categories.
+
+### Categories
+
+<Tabs>
+  <Tab title="Texture Categories">
+    - `carpet`
+    - `grid`
+    - `leather`
+    - `tile`
+    - `wood`
+  </Tab>
+  <Tab title="Object Categories">
+    - `bottle`
+    - `cable`
+    - `capsule`
+    - `hazelnut`
+    - `metal_nut`
+    - `pill`
+    - `screw`
+    - `toothbrush`
+    - `transistor`
+    - `zipper`
+  </Tab>
+</Tabs>
+
+### Dataset Structure
+
+MVTec AD organizes data by anomaly type:
+
+```
+mvtec_anomaly_detection/
+├── bottle/
+│   ├── train/
+│   │   └── good/          # Normal samples only
+│   ├── test/
+│   │   ├── good/          # Normal samples
+│   │   ├── broken_large/  # Anomaly type
+│   │   ├── broken_small/
+│   │   └── contamination/
+│   └── ground_truth/      # Pixel-level masks
+│       ├── broken_large/
+│       ├── broken_small/
+│       └── contamination/
+```
+
+### Usage Example
+
+```python
+from laft.datasets import build_industrial_dataset
+from torch.utils.data import DataLoader
+
+# Load test set for a category
+dataset = build_industrial_dataset(
+    name="mvtec",
+    category="bottle",
+    split="test",
+    root="./data",
+)
+
+print(f"Total samples: {len(dataset)}")
+print(f"Anomalies: {dataset.labels.sum().item()}")
+print(f"Normal: {(~dataset.labels).sum().item()}")
+
+# Iterate through dataset
+for image, mask, label in dataset:
+    # image: PIL.Image (or transformed tensor)
+    # mask: torch.Tensor [H, W], dtype=torch.bool
+    # label: torch.Tensor [], dtype=torch.bool
+    
+    if label:
+        # Anomalous sample - mask shows defect location
+        defect_pixels = mask.sum().item()
+        print(f"Found anomaly with {defect_pixels} defect pixels")
+    else:
+        # Normal sample - mask is all zeros
+        assert mask.sum() == 0
+```
+
+### Implementation Details
+
+From `laft/datasets/mvtec.py:61-71`:
+
+```python
+def load_image(self, index: int):
+    with open(os.path.join(self.data_root, self.split, f"{self.filenames[index]}.png"), "rb") as f:
+        image = Image.open(f)
+        image.load()
+    return image
+
+def load_mask(self, index: int):
+    with open(os.path.join(self.data_root, "ground_truth", f"{self.filenames[index]}_mask.png"), "rb") as f:
+        mask = Image.open(f)
+        mask.load()
+    return torch.from_numpy(np.asarray(mask).copy()) > 0
+```
+
+<Note>
+Masks are converted to boolean tensors with `> 0` to create binary masks.
+</Note>
+
+### Training vs Testing
+
+<CardGroup cols={2}>
+  <Card title="Train Split" icon="check">
+    - Contains only normal samples
+    - No anomalies included
+    - Used for learning normal patterns
+  </Card>
+  <Card title="Test Split" icon="vial">
+    - Mix of normal and anomalous samples
+    - Multiple defect types per category
+    - Pixel-level masks for anomalies
+  </Card>
+</CardGroup>
+
+## VisA
+
+VisA (Visual Anomaly) dataset contains 12 categories with more diverse anomaly types than MVTec AD.
+
+### Categories
+
+```python
+# From laft/datasets/visa.py:13-26
+CATEGORIES = (
+    "candle",
+    "capsules",
+    "cashew",
+    "chewinggum",
+    "fryum",
+    "macaroni1",
+    "macaroni2",
+    "pcb1",
+    "pcb2",
+    "pcb3",
+    "pcb4",
+    "pipe_fryum",
+)
+```
+
+### Dataset Structure
+
+VisA uses CSV metadata for organization:
+
+```
+VisA_20220922/
+├── split_csv/
+│   └── 1cls.csv          # Metadata file
+├── candle/
+│   ├── Data/
+│   │   ├── Images/
+│   │   │   ├── Normal/
+│   │   │   └── Anomaly/
+│   │   └── Masks/
+```
+
+### Usage Example
+
+```python
+from laft.datasets import build_industrial_dataset
+
+# Load VisA dataset
+dataset = build_industrial_dataset(
+    name="visa",
+    category="pcb1",
+    split="test",
+    root="./data",
+)
+
+image, mask, label = dataset[0]
+
+# VisA provides detailed anomaly masks
+if label:
+    print(f"Anomaly detected with mask coverage: {mask.float().mean():.2%}")
+```
+
+### Implementation Details
+
+From `laft/datasets/visa.py:52-59`:
+
+```python
+with open(os.path.join(self.data_root, "split_csv", self.csv_filename)) as f:
+    for row in DictReader(f):
+        if row["object"] == category and row["split"] == split:
+            self.image_filenames.append(row["image"])
+            self.mask_filenames.append(row["mask"] or None)
+            label_list.append(row["label"] != "normal")
+```
+
+<Note>
+VisA uses CSV-based organization, allowing flexible metadata management.
+</Note>
+
+## Mask Transforms
+
+Mask transforms are essential for aligning masks with transformed images.
+
+### Basic Mask Transform
+
+```python
+import torch
+from torchvision import transforms
+
+# Image transform
+image_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                        std=[0.229, 0.224, 0.225]),
+])
+
+# Mask transform - must match image transform geometry
+mask_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.Lambda(lambda x: x.float().unsqueeze(0)),  # [1, H, W]
+])
+
+dataset = build_industrial_dataset(
+    name="mvtec",
+    category="bottle",
+    split="test",
+    root="./data",
+    transform=image_transform,
+    mask_transform=mask_transform,
+)
+```
+
+### Advanced Mask Handling
+
+```python
+from torchvision import transforms
+import torch.nn.functional as F
+
+class MaskTransform:
+    def __init__(self, size=224):
+        self.size = size
+    
+    def __call__(self, mask):
+        # mask is boolean tensor [H, W]
+        mask = mask.float().unsqueeze(0).unsqueeze(0)  # [1, 1, H, W]
+        mask = F.interpolate(mask, size=(self.size, self.size), 
+                            mode='nearest')
+        return mask.squeeze(0).bool()  # [1, H, W], bool
+
+mask_transform = MaskTransform(size=224)
+
+dataset = build_industrial_dataset(
+    name="mvtec",
+    category="transistor",
+    split="test",
+    root="./data",
+    mask_transform=mask_transform,
+)
+```
+
+<Warning>
+Use `mode='nearest'` for mask interpolation to preserve binary values. Avoid bilinear interpolation which creates intermediate values.
+</Warning>
+
+## Working with Masks
+
+### Visualizing Anomalies
+
+```python
+import matplotlib.pyplot as plt
+from laft.datasets import build_industrial_dataset
+
+dataset = build_industrial_dataset(
+    name="mvtec",
+    category="bottle",
+    split="test",
+    root="./data",
+)
+
+# Find first anomaly
+for idx, (image, mask, label) in enumerate(dataset):
+    if label:
+        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        
+        axes[0].imshow(image)
+        axes[0].set_title("Original Image")
+        axes[0].axis('off')
+        
+        axes[1].imshow(mask, cmap='gray')
+        axes[1].set_title("Defect Mask")
+        axes[1].axis('off')
+        
+        # Overlay
+        axes[2].imshow(image)
+        axes[2].imshow(mask, alpha=0.5, cmap='Reds')
+        axes[2].set_title("Overlay")
+        axes[2].axis('off')
+        
+        plt.tight_layout()
+        plt.show()
+        break
+```
+
+### Computing Metrics
+
+```python
+from laft.datasets import build_industrial_dataset
+import torch
+
+dataset = build_industrial_dataset(
+    name="mvtec",
+    category="carpet",
+    split="test",
+    root="./data",
+)
+
+# Analyze defect coverage
+defect_coverages = []
+
+for image, mask, label in dataset:
+    if label:  # Only anomalies
+        coverage = mask.float().mean().item()
+        defect_coverages.append(coverage)
+
+print(f"Average defect coverage: {torch.tensor(defect_coverages).mean():.2%}")
+print(f"Max defect coverage: {torch.tensor(defect_coverages).max():.2%}")
+print(f"Min defect coverage: {torch.tensor(defect_coverages).min():.2%}")
+```
+
+### DataLoader Integration
+
+```python
+from torch.utils.data import DataLoader
+from laft.datasets import build_industrial_dataset
+
+dataset = build_industrial_dataset(
+    name="mvtec",
+    category="screw",
+    split="test",
+    root="./data",
+)
+
+loader = DataLoader(
+    dataset,
+    batch_size=16,
+    shuffle=True,
+    num_workers=4,
+)
+
+for images, masks, labels in loader:
+    # images: [batch_size, C, H, W]
+    # masks: [batch_size, H, W], dtype=torch.bool
+    # labels: [batch_size], dtype=torch.bool
+    
+    num_anomalies = labels.sum().item()
+    print(f"Batch has {num_anomalies} anomalies")
+    break
+```
+
+## Why Industrial Datasets?
+
+Industrial datasets are crucial for:
+
+1. **Pixel-level localization**: Identify exact defect locations, not just image-level classification
+2. **Real-world manufacturing**: Test on actual production scenarios
+3. **Diverse defect types**: Each category has multiple anomaly types (cracks, scratches, contamination, etc.)
+4. **Benchmark standardization**: Compare methods on widely-accepted datasets
+
+### Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Quality Control" icon="magnifying-glass">
+    Automatically detect manufacturing defects in production lines
+  </Card>
+  <Card title="Defect Localization" icon="location-dot">
+    Identify precise locations of anomalies for repair or analysis
+  </Card>
+  <Card title="Zero-Shot Detection" icon="wand-magic-sparkles">
+    Train on normal samples only, detect any deviation
+  </Card>
+  <Card title="Few-Shot Learning" icon="layer-group">
+    Learn from limited anomaly examples with normal data
+  </Card>
+</CardGroup>
+
+## Dataset Comparison
+
+| Feature | MVTec AD | VisA |
+|---------|----------|------|
+| **Categories** | 15 | 12 |
+| **Image Resolution** | Varies (700-1024px) | Varies |
+| **Train Samples/Category** | ~200-300 | ~100-300 |
+| **Test Samples/Category** | ~60-100 | ~100-200 |
+| **Defect Types** | 3-7 per category | 3-8 per category |
+| **Organization** | Directory-based | CSV metadata |
+| **Masks** | Binary PNG | Binary PNG |
+
+## Reference
+
+### API Summary
+
+```python
+from laft.datasets import build_industrial_dataset
+
+def build_industrial_dataset(
+    name: Literal["mvtec", "visa"],
+    category: str,  # See CATEGORIES for each dataset
+    split: Literal["train", "test"],
+    root: str = "./data",
+    transform: Callable | None = None,
+    mask_transform: Callable | None = None,
+) -> IndustrialAnomalyDataset
+```
+
+### Dataset Returns
+
+```python
+image, mask, label = dataset[index]
+# image: PIL.Image or transformed tensor
+# mask: torch.Tensor of shape [H, W], dtype=torch.bool
+# label: torch.Tensor of shape [], dtype=torch.bool (True=anomaly)
+```
+
+### Base Class Reference
+
+From `laft/datasets/base.py:54-94`:
+
+```python
+class IndustrialAnomalyDataset(Dataset):
+    labels: torch.Tensor  # [num_samples], bool
+    
+    def __getitem__(self, index: int):
+        image = self.load_image(index)
+        label = self.labels[index]
+        
+        if label.item():  # anomaly
+            mask = self.load_mask(index)
+        else:
+            mask = torch.zeros((image.size[1], image.size[0]), 
+                              dtype=torch.bool)
+        
+        if self.transform is not None:
+            image = self.transform(image)
+        if self.mask_transform is not None:
+            mask = self.mask_transform(mask)
+        
+        return image, mask, label
+```
+
+<Card title="Source Code" icon="code" href="https://github.com/yourusername/laft/blob/main/laft/datasets/">
+View the complete implementation in `laft/datasets/mvtec.py` and `laft/datasets/visa.py`
+</Card>

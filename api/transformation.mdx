@@ -1,0 +1,365 @@
+---
+title: Transformation Functions
+description: Core vector transformation and similarity operations for feature manipulation
+---
+
+The `laft` module provides essential functions for vector transformations, similarity computations, and feature space manipulations commonly used in representation learning.
+
+## inner
+
+Projects features onto a vector or subspace defined by one or more vectors.
+
+```python
+def inner(
+    features: Tensor,  # [batch_size, feature_size]
+    vectors: Tensor,   # [feature_size] or [num_vectors, feature_size]
+    *,
+    basis: bool = True,
+) -> Tensor:           # [batch_size, feature_size]
+```
+
+<ParamField path="features" type="Tensor">
+  Input features with shape `[batch_size, feature_size]` to be projected.
+</ParamField>
+
+<ParamField path="vectors" type="Tensor">
+  Vector(s) defining the projection subspace. Can be:
+  - 1D tensor of shape `[feature_size]` for single vector projection
+  - 2D tensor of shape `[num_vectors, feature_size]` for subspace projection
+</ParamField>
+
+<ParamField path="basis" type="bool" default="True">
+  If `True`, treats `vectors` as an orthonormal basis. If `False`, computes the orthonormal basis via SVD.
+</ParamField>
+
+<ResponseField name="projection" type="Tensor">
+  Projected features with shape `[batch_size, feature_size]`.
+</ResponseField>
+
+### Usage
+
+Project features onto a concept vector:
+
+```python
+import torch
+from laft import inner
+
+# Project features onto a single direction
+features = torch.randn(32, 512)  # 32 samples, 512-dim features
+concept_vector = torch.randn(512)  # concept direction
+projected = inner(features, concept_vector)
+
+# Project onto a subspace defined by multiple vectors
+concept_vectors = torch.randn(10, 512)  # 10 concept vectors
+subspace_projection = inner(features, concept_vectors)
+```
+
+---
+
+## orthogonal
+
+Removes the component of features along specified vector(s), creating an orthogonal projection.
+
+```python
+def orthogonal(
+    features: Tensor,  # [batch_size, feature_size]
+    vectors: Tensor,   # [feature_size] or [num_vectors, feature_size]
+    *,
+    normalize: bool = False,
+    basis: bool = True,
+) -> Tensor:           # [batch_size, feature_size]
+```
+
+<ParamField path="features" type="Tensor">
+  Input features with shape `[batch_size, feature_size]`.
+</ParamField>
+
+<ParamField path="vectors" type="Tensor">
+  Vector(s) to remove from features. Shape `[feature_size]` or `[num_vectors, feature_size]`.
+</ParamField>
+
+<ParamField path="normalize" type="bool" default="False">
+  If `True`, normalizes the resulting orthogonal projection to unit length.
+</ParamField>
+
+<ParamField path="basis" type="bool" default="True">
+  If `True`, treats `vectors` as an orthonormal basis. If `False`, computes the orthonormal basis via SVD.
+</ParamField>
+
+<ResponseField name="orthogonal_features" type="Tensor">
+  Features with the specified vector component(s) removed, shape `[batch_size, feature_size]`.
+</ResponseField>
+
+### Usage
+
+Remove unwanted concepts from feature representations:
+
+```python
+from laft import orthogonal
+
+# Remove bias direction from features
+features = torch.randn(32, 512)
+bias_vector = torch.randn(512)
+debiased = orthogonal(features, bias_vector)
+
+# Remove multiple unwanted directions and normalize
+unwanted_directions = torch.randn(5, 512)
+cleaned = orthogonal(features, unwanted_directions, normalize=True)
+```
+
+---
+
+## cosine_similarity
+
+Computes pairwise cosine similarity between two sets of vectors.
+
+```python
+def cosine_similarity(
+    x1: Tensor,
+    x2: Tensor | None = None,
+    eps: float = 1e-8
+) -> Tensor
+```
+
+<ParamField path="x1" type="Tensor">
+  First set of vectors. Shape `[batch_size, feature_size]` for 2D or `[batch_size, seq_len, feature_size]` for 3D.
+</ParamField>
+
+<ParamField path="x2" type="Tensor | None" default="None">
+  Second set of vectors. If `None`, computes similarity of `x1` with itself. Must have same dimensionality as `x1`.
+</ParamField>
+
+<ParamField path="eps" type="float" default="1e-8">
+  Small epsilon value to prevent division by zero during normalization.
+</ParamField>
+
+<ResponseField name="similarity_matrix" type="Tensor">
+  Cosine similarity matrix. Shape depends on input dimensions:
+  - 2D inputs: `[batch_size_x1, batch_size_x2]`
+  - 3D inputs: `[batch_size, seq_len_x1, seq_len_x2]`
+</ResponseField>
+
+### Usage
+
+```python
+from laft import cosine_similarity
+
+# Compute pairwise similarities between two sets
+embeddings1 = torch.randn(32, 512)
+embeddings2 = torch.randn(64, 512)
+similarity = cosine_similarity(embeddings1, embeddings2)  # [32, 64]
+
+# Compute self-similarity matrix
+self_sim = cosine_similarity(embeddings1)  # [32, 32]
+```
+
+---
+
+## cosine_distance
+
+Computes cosine distance (1 - cosine similarity) between vectors.
+
+```python
+def cosine_distance(
+    x1: Tensor,
+    x2: Tensor | None = None,
+    eps: float = 1e-8
+) -> Tensor
+```
+
+<ParamField path="x1" type="Tensor">
+  First set of vectors.
+</ParamField>
+
+<ParamField path="x2" type="Tensor | None" default="None">
+  Second set of vectors. If `None`, uses `x1`.
+</ParamField>
+
+<ParamField path="eps" type="float" default="1e-8">
+  Small epsilon value for numerical stability.
+</ParamField>
+
+<ResponseField name="distance_matrix" type="Tensor">
+  Cosine distance matrix with same shape as cosine_similarity output.
+</ResponseField>
+
+### Usage
+
+```python
+from laft import cosine_distance
+
+embeddings1 = torch.randn(32, 512)
+embeddings2 = torch.randn(64, 512)
+distance = cosine_distance(embeddings1, embeddings2)  # [32, 64]
+```
+
+---
+
+## knn
+
+Computes k-nearest neighbor anomaly scores based on cosine distance.
+
+```python
+def knn(
+    train_features: Tensor,
+    test_features: Tensor,
+    *,
+    n_neighbors: int = 30,
+) -> Tensor
+```
+
+<ParamField path="train_features" type="Tensor">
+  Training set features with shape `[num_train, feature_size]`.
+</ParamField>
+
+<ParamField path="test_features" type="Tensor">
+  Test set features with shape `[num_test, feature_size]`.
+</ParamField>
+
+<ParamField path="n_neighbors" type="int" default="30">
+  Number of nearest neighbors to consider. Automatically capped at `num_train` if larger.
+</ParamField>
+
+<ResponseField name="scores" type="Tensor">
+  Anomaly scores for test samples, shape `[num_test]`. Lower scores indicate samples more similar to training data.
+</ResponseField>
+
+### Usage
+
+Detect anomalies using k-nearest neighbors:
+
+```python
+from laft import knn
+
+# Train on normal samples
+train_features = torch.randn(1000, 512)  # normal samples
+test_features = torch.randn(100, 512)    # test samples
+
+# Compute anomaly scores (lower = more normal)
+scores = knn(train_features, test_features, n_neighbors=30)
+```
+
+---
+
+## pca
+
+Computes principal components of vectors using randomized SVD.
+
+```python
+def pca(
+    vectors: Tensor,
+    n_components: int | None = None,
+    *,
+    center: bool = False,
+    niter: int = 5,
+) -> Tensor
+```
+
+<ParamField path="vectors" type="Tensor">
+  Input vectors with shape `[num_samples, feature_size]`.
+</ParamField>
+
+<ParamField path="n_components" type="int | None" default="None">
+  Number of principal components to compute. If `None`, computes `min(num_samples, feature_size)` components.
+</ParamField>
+
+<ParamField path="center" type="bool" default="False">
+  If `True`, centers the data by subtracting the mean before computing PCA.
+</ParamField>
+
+<ParamField path="niter" type="int" default="5">
+  Number of iterations for the randomized SVD algorithm.
+</ParamField>
+
+<ResponseField name="components" type="Tensor">
+  Principal component vectors with shape `[n_components, feature_size]`.
+</ResponseField>
+
+### Usage
+
+```python
+from laft import pca
+
+# Extract top principal components
+features = torch.randn(1000, 512)
+components = pca(features, n_components=50, center=True)
+
+# Project data onto principal components
+projected = features @ components.T  # [1000, 50]
+```
+
+---
+
+## align_vectors
+
+Aligns vectors to have consistent sign relative to a reference vector.
+
+```python
+def align_vectors(
+    vectors: torch.Tensor,
+    reference_idx: int = 0
+) -> Tensor
+```
+
+<ParamField path="vectors" type="Tensor">
+  Vectors to align, shape `[num_vectors, feature_size]`.
+</ParamField>
+
+<ParamField path="reference_idx" type="int" default="0">
+  Index of the vector to use as reference for alignment.
+</ParamField>
+
+<ResponseField name="aligned" type="Tensor">
+  Aligned vectors with shape `[num_vectors, feature_size]`. Vectors are flipped if they have negative cosine similarity with the reference.
+</ResponseField>
+
+### Usage
+
+Ensure consistent direction across related vectors:
+
+```python
+from laft import align_vectors
+
+# Align concept vectors to point in similar directions
+concept_vectors = torch.randn(10, 512)
+aligned = align_vectors(concept_vectors, reference_idx=0)
+```
+
+---
+
+## prompt_pair
+
+Computes pairwise differences between prompt embeddings, useful for analyzing prompt variations.
+
+```python
+def prompt_pair(*prompts_list: Tensor) -> Tensor
+```
+
+<ParamField path="prompts_list" type="*Tensor">
+  One or more prompt embedding tensors:
+  - **Single tensor**: Computes all pairwise differences within one set of prompts `[num_prompts, feature_size]`
+  - **Multiple tensors**: Computes pairwise differences between different sets of prompts
+</ParamField>
+
+<ResponseField name="pairwise_diff" type="Tensor">
+  Aligned pairwise differences between prompts. Shape `[num_pairs, feature_size]` where:
+  - Single input: `num_pairs = num_prompts * (num_prompts - 1) / 2`
+  - Multiple inputs: `num_pairs = sum of all cross-combinations`
+</ResponseField>
+
+### Usage
+
+Analyze semantic differences between prompts:
+
+```python
+from laft import prompt_pair
+
+# Compare variations of a single prompt
+prompts = torch.randn(5, 512)  # 5 prompt variations
+differences = prompt_pair(prompts)  # [10, 512] (5 choose 2)
+
+# Compare prompts across different categories
+category_a = torch.randn(3, 512)
+category_b = torch.randn(4, 512)
+cross_diffs = prompt_pair(category_a, category_b)  # [12, 512] (3 * 4)
+```

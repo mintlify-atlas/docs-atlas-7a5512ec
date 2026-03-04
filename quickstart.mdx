@@ -1,80 +1,260 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quickstart'
+description: 'Get started with LAFT in under 5 minutes'
 ---
 
-## Get started in three steps
+This quickstart guide will walk you through a complete example of using LAFT for anomaly detection. You'll learn how to load a CLIP model, construct a concept subspace from language prompts, and transform image features for anomaly detection.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Make sure you have completed the [installation](/installation) steps before proceeding.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+## Basic Example
+
+Here's a complete working example that demonstrates the core LAFT workflow:
+
+<Steps>
+  <Step title="Import and Setup">
+    First, import LAFT and disable PyTorch's autograd to prevent out-of-memory errors:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```python
+    import laft
+    import torch
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    # Disable autograd (prevents OOM)
+    torch.set_grad_enabled(False)
+    ```
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    <Note>
+      Disabling autograd is important when working with large CLIP models to avoid memory issues during inference.
+    </Note>
+  </Step>
+  
+  <Step title="Load CLIP Model">
+    Load a pre-trained CLIP model and its preprocessing transform:
+    
+    ```python
+    # Load CLIP model with DFN pre-trained weights
+    model, transform = laft.load_clip("ViT-B-16-quickgelu:dfn2b")
+    ```
+    
+    The model returns both the CLIP model and an image preprocessing transform. The `ViT-B-16-quickgelu:dfn2b` variant uses Vision Transformer backbone with DFN (DataFiltering Network) pre-training.
+  </Step>
+  
+  <Step title="Prepare Data and Prompts">
+    Load your dataset and define language prompts that describe the concept you want to guide or ignore:
+    
+    ```python
+    # Get pre-configured prompts for Color MNIST
+    prompts = laft.prompts.get_prompts("color_mnist", "number")
+    
+    # Load and preprocess images
+    # (assuming you have loaded images already)
+    images = transform(raw_images)
+    
+    # Encode images and text
+    image_features = model.encode_image(images)
+    text_features = model.encode_text(prompts["all"])
+    ```
+    
+    The `get_prompts()` function returns a dictionary with different prompt sets:
+    - `"all"`: All prompts for the concept
+    - `"normal"`: Only normal state prompts
+    - `"exact"`: Exact matching prompts
+  </Step>
+  
+  <Step title="Construct Concept Subspace">
+    Build a concept subspace by computing pairwise differences between text embeddings and applying PCA:
+    
+    ```python
+    # Compute pairwise differences between prompts
+    pair_diffs = laft.prompt_pair(text_features)
+    
+    # Extract principal components as concept basis
+    concept_basis = laft.pca(pair_diffs, n_components=24)
+    ```
+    
+    The `prompt_pair()` function computes differences between all pairs of prompts, which helps capture semantic directions in the embedding space. PCA then extracts the most important directions as a basis for the concept subspace.
+  </Step>
+  
+  <Step title="Transform Features">
+    Apply language-assisted feature transformation to guide or ignore the concept:
+    
+    ```python
+    # Guide: project features onto concept subspace
+    guided_features = laft.inner(image_features, concept_basis)
+    
+    # Ignore: project features orthogonal to concept subspace
+    ignored_features = laft.orthogonal(image_features, concept_basis)
+    ```
+    
+    Choose the transformation based on your use case:
+    - Use `inner()` when you want to **guide** detection toward the concept
+    - Use `orthogonal()` when you want to **ignore** the concept
+  </Step>
+  
+  <Step title="Detect Anomalies">
+    Use the transformed features for anomaly detection with k-NN:
+    
+    ```python
+    # Use k-NN for anomaly scoring
+    anomaly_scores = laft.knn(
+        train_features=guided_features[train_indices],
+        test_features=guided_features[test_indices],
+        n_neighbors=30
+    )
+    
+    # Evaluate with metrics
+    from laft.metrics import binary_auroc, binary_auprc
+    
+    auroc = binary_auroc(anomaly_scores, labels)
+    auprc = binary_auprc(anomaly_scores, labels)
+    
+    print(f"AUROC: {auroc:.3f}")
+    print(f"AUPRC: {auprc:.3f}")
+    ```
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Complete Script
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Here's the complete code in one place:
 
-### Step 3: Go live
+```python
+import laft
+import torch
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+# Setup
+torch.set_grad_enabled(False)
 
-## Next steps
+# Load model
+model, transform = laft.load_clip("ViT-B-16-quickgelu:dfn2b")
 
-Now that you have your docs running, explore these key features:
+# Get prompts
+prompts = laft.prompts.get_prompts("color_mnist", "number")
+
+# Encode features (assuming images are already loaded)
+image_features = model.encode_image(images)
+text_features = model.encode_text(prompts["all"])
+
+# Construct concept subspace
+pair_diffs = laft.prompt_pair(text_features)
+concept_basis = laft.pca(pair_diffs, n_components=24)
+
+# Transform features
+guided_features = laft.inner(image_features, concept_basis)
+
+# Detect anomalies
+anomaly_scores = laft.knn(
+    train_features=guided_features[train_indices],
+    test_features=guided_features[test_indices],
+    n_neighbors=30
+)
+
+# Evaluate
+auroc = laft.binary_auroc(anomaly_scores, labels)
+print(f"AUROC: {auroc:.3f}")
+```
+
+## Different Use Cases
+
+<Tabs>
+  <Tab title="Semantic Datasets">
+    For semantic datasets like Waterbirds or CelebA:
+    
+    ```python
+    # Load Waterbirds dataset
+    model, data = laft.get_clip_cached_features(
+        model_name="ViT-B-16-quickgelu:dfn2b",
+        dataset_name="waterbirds",
+        splits=["train", "test"]
+    )
+    
+    # Get prompts for bird detection (guide)
+    prompts = laft.prompts.get_prompts("waterbirds", "bird")
+    text_features = model.encode_text(prompts["all"])
+    
+    # Build concept subspace
+    pair_diffs = laft.prompt_pair(text_features)
+    concept_basis = laft.pca(pair_diffs, n_components=24)
+    
+    # Transform and evaluate
+    train_features, train_attrs = data["train"]
+    test_features, test_attrs = data["test"]
+    
+    guided_train = laft.inner(train_features, concept_basis)
+    guided_test = laft.inner(test_features, concept_basis)
+    ```
+  </Tab>
+  
+  <Tab title="Industrial Datasets">
+    For industrial defect detection with MVTec AD or VisA:
+    
+    ```python
+    # Load industrial dataset
+    from laft.datasets import build_industrial_dataset
+    
+    dataset = build_industrial_dataset(
+        name="mvtec",
+        category="bottle",
+        split="test",
+        transform=transform
+    )
+    
+    # Use industrial-specific prompts
+    from laft.prompts.industrial1 import NORMAL_TEMPLATES, ABNORMAL_TEMPLATES
+    
+    # Create prompts for bottle defects
+    normal_prompts = [t.format("bottle") for t in NORMAL_TEMPLATES]
+    abnormal_prompts = [t.format("bottle") for t in ABNORMAL_TEMPLATES]
+    ```
+  </Tab>
+</Tabs>
+
+## Running the Scripts
+
+The repository includes pre-configured scripts for different datasets. Here are some examples:
+
+<CodeGroup>
+```bash Color MNIST
+python scripts/semantic/laft.py \
+  -m ViT-B-16-quickgelu:dfn2b \
+  -d color_mnist \
+  -g guide_number \
+  -o results/color_mnist.txt \
+  --mnist-seed 42
+```
+
+```bash Waterbirds
+python scripts/semantic/laft.py \
+  -m ViT-B-16-quickgelu:dfn2b \
+  -d waterbirds \
+  -g guide_bird \
+  -o results/waterbirds.txt
+```
+
+```bash MVTec AD
+python scripts/industrial/winclip.py \
+  -m ViT-B-16-quickgelu:dfn2b \
+  -d mvtec \
+  -c bottle \
+  -o results/mvtec_bottle.txt
+```
+</CodeGroup>
+
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts/overview">
+    Learn the theory behind LAFT
+  </Card>
+  <Card title="Datasets" icon="database" href="/datasets/semantic-datasets">
+    Explore available datasets
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/transformation">
+    Dive into the API documentation
+  </Card>
+  <Card title="Guides" icon="book" href="/guides/basic-usage">
+    Follow detailed usage guides
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

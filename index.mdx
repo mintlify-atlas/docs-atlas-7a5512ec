@@ -1,97 +1,166 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: LAFT
+description: Language-Assisted Feature Transformation for Anomaly Detection using vision-language models
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#b21e1e] via-[#8a1818] to-[#5a1010] dark:from-[#b21e1e] dark:via-[#8a1818] dark:to-[#5a1010] py-20">
+  <div className="max-w-6xl mx-auto px-6">
+    <div className="text-center">
+      <h1 className="text-5xl sm:text-6xl font-bold text-white mb-6">
+        Language-Assisted Feature Transformation
+      </h1>
+      <p className="text-xl text-white/90 max-w-3xl mx-auto mb-8">
+        Transform visual features using natural language guidance for enhanced anomaly detection. LAFT leverages vision-language models to guide feature transformations through concept subspaces.
+      </p>
+      <div className="flex flex-wrap gap-4 justify-center">
+        <a
+          href="/quickstart"
+          className="inline-flex items-center px-6 py-3 rounded-lg bg-white text-[#b21e1e] font-semibold hover:bg-gray-100 transition-colors no-underline"
+        >
+          Get Started
+        </a>
+        <a
+          href="/api/transformation"
+          className="inline-flex items-center px-6 py-3 rounded-lg border-2 border-white/30 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors no-underline"
+        >
+          API Reference
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Quick Start</h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">Get up and running with LAFT in minutes</p>
+  </div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+  <Steps>
+    <Step title="Install LAFT">
+      Install LAFT and its dependencies using pip:
+      
+      ```bash
+      pip install torch torchvision open_clip_torch scikit-learn
+      ```
+      
+      Clone the repository and install requirements:
+      
+      ```bash
+      git clone https://github.com/yuneg11/LAFT.git
+      cd LAFT
+      pip install -r requirements.txt
+      ```
+    </Step>
+    
+    <Step title="Load a CLIP model">
+      Import LAFT and load a pre-trained CLIP model:
+      
+      ```python
+      import laft
+      import torch
+      
+      torch.set_grad_enabled(False)  # Disable autograd to prevent OOM
+      
+      # Load CLIP model and preprocessing transform
+      model, transform = laft.load_clip("ViT-B-16-quickgelu:dfn2b")
+      ```
+    </Step>
+    
+    <Step title="Define concept prompts">
+      Create text prompts that describe the concept you want to guide or ignore:
+      
+      ```python
+      # Get prompts for a specific dataset and guidance type
+      prompts = laft.prompts.get_prompts("color_mnist", "number")
+      
+      # Encode text prompts into features
+      text_features = model.encode_text(prompts["all"])
+      ```
+    </Step>
+    
+    <Step title="Transform image features">
+      Apply language-assisted transformation to your image features:
+      
+      ```python
+      # Encode images
+      image_features = model.encode_image(images)
+      
+      # Construct concept subspace from prompt pairs
+      pair_diffs = laft.prompt_pair(text_features)
+      concept_basis = laft.pca(pair_diffs, n_components=24)
+      
+      # Transform features
+      guided_features = laft.inner(image_features, concept_basis)
+      ignored_features = laft.orthogonal(image_features, concept_basis)
+      ```
+      
+      <Note>
+        The `inner()` function projects features onto the concept subspace, while `orthogonal()` removes the concept's influence.
+      </Note>
+    </Step>
+  </Steps>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Key Features</h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">Powerful tools for language-guided anomaly detection</p>
+  </div>
+  
+  <CardGroup cols={2}>
+    <Card title="Language-Guided Transformations" icon="wand-magic-sparkles" href="/concepts/feature-transformation">
+      Use natural language to guide feature transformations through CLIP embeddings and concept subspaces
+    </Card>
+    <Card title="Concept Subspace Construction" icon="cube" href="/concepts/concept-subspace">
+      Build robust concept representations using PCA on prompt pair differences
+    </Card>
+    <Card title="Flexible Projections" icon="arrows-split-up-and-left" href="/api/transformation">
+      Project features onto or orthogonal to concept subspaces with inner() and orthogonal() operations
+    </Card>
+    <Card title="Comprehensive Metrics" icon="chart-line" href="/api/metrics">
+      Evaluate anomaly detection with AUROC, AUPRC, FPR95, and optimal threshold selection
+    </Card>
+    <Card title="Multi-Domain Datasets" icon="database" href="/datasets/semantic-datasets">
+      Built-in support for semantic (MNIST, Waterbirds, CelebA) and industrial datasets (MVTec AD, VisA)
+    </Card>
+    <Card title="Prompt Engineering" icon="messages" href="/guides/prompts">
+      Pre-configured prompt templates and utilities for different guidance types
+    </Card>
+  </CardGroup>
+</div>
 
-Design a docs site that looks great and empowers your users.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Explore Documentation</h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">Learn more about LAFT's capabilities</p>
+  </div>
+  
+  <CardGroup cols={3}>
+    <Card title="Core Concepts" icon="lightbulb" href="/concepts/overview">
+      Understand how LAFT works under the hood
+    </Card>
+    <Card title="Datasets" icon="folder-open" href="/datasets/semantic-datasets">
+      Work with semantic and industrial anomaly datasets
+    </Card>
+    <Card title="Evaluation" icon="chart-simple" href="/guides/evaluation">
+      Measure and compare anomaly detection performance
+    </Card>
+  </CardGroup>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="bg-gradient-to-r from-[#b21e1e] to-[#8a1818] dark:from-[#b21e1e] dark:to-[#8a1818] rounded-2xl p-12 text-center">
+    <h2 className="text-3xl font-bold text-white mb-4">Ready to Get Started?</h2>
+    <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
+      Follow our quickstart guide to build your first language-assisted anomaly detector in minutes
+    </p>
+    <a
+      href="/quickstart"
+      className="inline-flex items-center px-8 py-3 rounded-lg bg-white text-[#b21e1e] font-semibold hover:bg-gray-100 transition-colors no-underline"
+    >
+      Get Started Now
+    </a>
+  </div>
+</div>

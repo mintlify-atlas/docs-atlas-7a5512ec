@@ -1,0 +1,473 @@
+---
+title: Metrics
+description: Binary classification metrics for anomaly detection and evaluation
+---
+
+The `laft.metrics` module provides comprehensive binary classification metrics commonly used in anomaly detection and out-of-distribution detection tasks.
+
+## BinaryMetrics
+
+TypedDict containing binary classification metric results.
+
+```python
+class BinaryMetrics(TypedDict, total=False):
+    auroc: float
+    auprc: float
+    accuracy: float
+    f1: float
+    fpr95: float
+```
+
+<ParamField path="auroc" type="float">
+  Area Under the Receiver Operating Characteristic curve (0-1, higher is better).
+</ParamField>
+
+<ParamField path="auprc" type="float">
+  Area Under the Precision-Recall Curve (0-1, higher is better).
+</ParamField>
+
+<ParamField path="accuracy" type="float">
+  Classification accuracy at optimal or specified threshold (0-1, higher is better).
+</ParamField>
+
+<ParamField path="f1" type="float">
+  F1 score at optimal or specified threshold (0-1, higher is better).
+</ParamField>
+
+<ParamField path="fpr95" type="float">
+  False Positive Rate at 95% True Positive Rate (0-1, lower is better). Common metric for anomaly detection.
+</ParamField>
+
+---
+
+## binary_auroc
+
+Computes Area Under the Receiver Operating Characteristic curve.
+
+```python
+def binary_auroc(input: Tensor, target: Tensor) -> float
+```
+
+<ParamField path="input" type="Tensor">
+  Predicted scores or probabilities, shape `[N]`. Higher values indicate positive class.
+</ParamField>
+
+<ParamField path="target" type="Tensor">
+  Ground truth binary labels, shape `[N]`. Values should be 0 or 1.
+</ParamField>
+
+<ResponseField name="auroc" type="float">
+  AUROC score between 0 and 1. Higher is better; 0.5 indicates random performance.
+</ResponseField>
+
+### Usage
+
+```python
+import torch
+from laft.metrics import binary_auroc
+
+scores = torch.tensor([0.9, 0.8, 0.3, 0.2])
+labels = torch.tensor([1, 1, 0, 0])
+auroc = binary_auroc(scores, labels)
+print(f"AUROC: {auroc:.3f}")  # Perfect score: 1.000
+```
+
+---
+
+## binary_auprc
+
+Computes Area Under the Precision-Recall Curve.
+
+```python
+def binary_auprc(input: Tensor, target: Tensor) -> float
+```
+
+<ParamField path="input" type="Tensor">
+  Predicted scores, shape `[N]`.
+</ParamField>
+
+<ParamField path="target" type="Tensor">
+  Ground truth binary labels, shape `[N]`.
+</ParamField>
+
+<ResponseField name="auprc" type="float">
+  AUPRC score between 0 and 1. Higher is better. Particularly useful for imbalanced datasets.
+</ResponseField>
+
+### Usage
+
+```python
+from laft.metrics import binary_auprc
+
+scores = torch.tensor([0.9, 0.8, 0.3, 0.2])
+labels = torch.tensor([1, 1, 0, 0])
+auprc = binary_auprc(scores, labels)
+print(f"AUPRC: {auprc:.3f}")
+```
+
+---
+
+## binary_f1_score
+
+Computes F1 score at a specified or optimal threshold.
+
+```python
+def binary_f1_score(
+    input: Tensor,
+    target: Tensor,
+    *,
+    threshold: float | Literal["auto"] = "auto",
+) -> float
+```
+
+<ParamField path="input" type="Tensor">
+  Predicted scores, shape `[N]`.
+</ParamField>
+
+<ParamField path="target" type="Tensor">
+  Ground truth binary labels, shape `[N]`.
+</ParamField>
+
+<ParamField path="threshold" type="float | Literal['auto']" default="'auto'">
+  Classification threshold:
+  - `"auto"`: Automatically determines optimal threshold that maximizes F1
+  - `float`: Use specified threshold value
+</ParamField>
+
+<ResponseField name="f1" type="float">
+  F1 score between 0 and 1. Harmonic mean of precision and recall.
+</ResponseField>
+
+### Usage
+
+```python
+from laft.metrics import binary_f1_score
+
+scores = torch.tensor([0.9, 0.8, 0.6, 0.3, 0.2])
+labels = torch.tensor([1, 1, 0, 0, 0])
+
+# Auto-compute optimal threshold
+f1_auto = binary_f1_score(scores, labels)
+print(f"F1 (auto): {f1_auto:.3f}")
+
+# Use specific threshold
+f1_fixed = binary_f1_score(scores, labels, threshold=0.5)
+print(f"F1 (0.5): {f1_fixed:.3f}")
+```
+
+---
+
+## binary_accuracy
+
+Computes classification accuracy at a specified or optimal threshold.
+
+```python
+def binary_accuracy(
+    input: Tensor,
+    target: Tensor,
+    *,
+    threshold: float | Literal["auto"] = "auto",
+) -> float
+```
+
+<ParamField path="input" type="Tensor">
+  Predicted scores, shape `[N]`.
+</ParamField>
+
+<ParamField path="target" type="Tensor">
+  Ground truth binary labels, shape `[N]`.
+</ParamField>
+
+<ParamField path="threshold" type="float | Literal['auto']" default="'auto'">
+  Classification threshold (same behavior as `binary_f1_score`).
+</ParamField>
+
+<ResponseField name="accuracy" type="float">
+  Accuracy between 0 and 1. Fraction of correct predictions.
+</ResponseField>
+
+### Usage
+
+```python
+from laft.metrics import binary_accuracy
+
+scores = torch.tensor([0.9, 0.8, 0.3, 0.2])
+labels = torch.tensor([1, 1, 0, 0])
+accuracy = binary_accuracy(scores, labels, threshold=0.5)
+print(f"Accuracy: {accuracy:.1%}")
+```
+
+---
+
+## binary_fpr95
+
+Computes False Positive Rate at 95% True Positive Rate. Common metric for anomaly detection.
+
+```python
+def binary_fpr95(input: Tensor, target: Tensor) -> float
+```
+
+<ParamField path="input" type="Tensor">
+  Predicted anomaly scores, shape `[N]`. Higher values indicate anomalies.
+</ParamField>
+
+<ParamField path="target" type="Tensor">
+  Ground truth labels, shape `[N]`. 1 for anomaly, 0 for normal.
+</ParamField>
+
+<ResponseField name="fpr95" type="float">
+  FPR@95 between 0 and 1. Lower is better. Measures false alarm rate when detecting 95% of anomalies.
+</ResponseField>
+
+### Usage
+
+```python
+from laft.metrics import binary_fpr95
+
+# Anomaly detection scores (higher = more anomalous)
+anomal_scores = torch.tensor([0.9, 0.85, 0.7, 0.3, 0.2, 0.1])
+labels = torch.tensor([1, 1, 1, 0, 0, 0])  # 1 = anomaly
+
+fpr95 = binary_fpr95(anomal_scores, labels)
+print(f"FPR@95: {fpr95:.1%}")  # Low is good
+```
+
+---
+
+## optimal_threshold
+
+Computes the optimal classification threshold that maximizes F1 score.
+
+```python
+def optimal_threshold(input: Tensor, target: Tensor) -> float
+```
+
+<ParamField path="input" type="Tensor">
+  Predicted scores, shape `[N]`.
+</ParamField>
+
+<ParamField path="target" type="Tensor">
+  Ground truth binary labels, shape `[N]`.
+</ParamField>
+
+<ResponseField name="threshold" type="float">
+  Optimal threshold value that maximizes F1 score.
+</ResponseField>
+
+### Usage
+
+```python
+from laft.metrics import optimal_threshold
+
+scores = torch.tensor([0.9, 0.8, 0.6, 0.3, 0.2])
+labels = torch.tensor([1, 1, 0, 0, 0])
+
+threshold = optimal_threshold(scores, labels)
+print(f"Optimal threshold: {threshold:.3f}")
+
+# Use this threshold for predictions
+predictions = (scores >= threshold).float()
+```
+
+---
+
+## binary_metrics
+
+Computes multiple binary classification metrics at once.
+
+```python
+def binary_metrics(
+    input: Tensor | Sequence[Tensor],
+    target: Tensor,
+    *,
+    threshold: float | Literal["auto"] = "auto",
+    types: Sequence[str] = ("auroc", "auprc", "fpr95"),
+) -> BinaryMetrics | tuple[BinaryMetrics, BinaryMetrics]
+```
+
+<ParamField path="input" type="Tensor | Sequence[Tensor]">
+  Predicted scores:
+  - **Single tensor**: Returns single `BinaryMetrics` dict
+  - **Sequence of tensors**: Computes metrics for each, returns mean and std
+</ParamField>
+
+<ParamField path="target" type="Tensor">
+  Ground truth binary labels, shape `[N]`.
+</ParamField>
+
+<ParamField path="threshold" type="float | Literal['auto']" default="'auto'">
+  Threshold for accuracy and F1 metrics (if included in `types`).
+</ParamField>
+
+<ParamField path="types" type="Sequence[str]" default="('auroc', 'auprc', 'fpr95')">
+  Metrics to compute. Available: `"auroc"`, `"auprc"`, `"accuracy"`, `"f1"`, `"fpr95"`.
+</ParamField>
+
+<ResponseField name="metrics" type="BinaryMetrics | tuple[BinaryMetrics, BinaryMetrics]">
+  - **Single input**: Returns `BinaryMetrics` dict
+  - **Multiple inputs**: Returns `(mean_metrics, std_metrics)` tuple
+</ResponseField>
+
+### Usage
+
+Single evaluation:
+
+```python
+from laft.metrics import binary_metrics
+
+scores = torch.tensor([0.9, 0.8, 0.3, 0.2])
+labels = torch.tensor([1, 1, 0, 0])
+
+# Compute default metrics
+metrics = binary_metrics(scores, labels)
+print(f"AUROC: {metrics['auroc']:.3f}")
+print(f"AUPRC: {metrics['auprc']:.3f}")
+print(f"FPR95: {metrics['fpr95']:.3f}")
+
+# Compute all metrics including F1 and accuracy
+all_metrics = binary_metrics(
+    scores, labels,
+    types=("auroc", "auprc", "f1", "accuracy", "fpr95")
+)
+print(f"F1: {all_metrics['f1']:.3f}")
+print(f"Accuracy: {all_metrics['accuracy']:.3f}")
+```
+
+Multiple runs with mean and std:
+
+```python
+# Evaluate across multiple runs/folds
+run_scores = [
+    torch.tensor([0.9, 0.8, 0.3, 0.2]),
+    torch.tensor([0.85, 0.75, 0.4, 0.15]),
+    torch.tensor([0.95, 0.9, 0.2, 0.1]),
+]
+labels = torch.tensor([1, 1, 0, 0])
+
+mean_metrics, std_metrics = binary_metrics(run_scores, labels)
+
+print(f"AUROC: {mean_metrics['auroc']:.3f} ± {std_metrics['auroc']:.3f}")
+print(f"AUPRC: {mean_metrics['auprc']:.3f} ± {std_metrics['auprc']:.3f}")
+```
+
+---
+
+## mean_std
+
+Computes mean and standard deviation of a sequence of values.
+
+```python
+def mean_std(values: Sequence[float]) -> tuple[float, float]
+```
+
+<ParamField path="values" type="Sequence[float]">
+  List of numerical values.
+</ParamField>
+
+<ResponseField name="mean" type="float">
+  Mean of the values.
+</ResponseField>
+
+<ResponseField name="std" type="float">
+  Standard deviation of the values.
+</ResponseField>
+
+### Usage
+
+```python
+from laft.metrics import mean_std
+
+auroc_scores = [0.95, 0.93, 0.96, 0.94]
+mean, std = mean_std(auroc_scores)
+print(f"AUROC: {mean:.3f} ± {std:.3f}")
+```
+
+---
+
+## metric_mean_std
+
+Computes mean and standard deviation across multiple metric dictionaries.
+
+```python
+def metric_mean_std(
+    metrics: Sequence[BinaryMetrics]
+) -> tuple[BinaryMetrics, BinaryMetrics]
+```
+
+<ParamField path="metrics" type="Sequence[BinaryMetrics]">
+  List of metric dictionaries from multiple runs.
+</ParamField>
+
+<ResponseField name="mean_metrics" type="BinaryMetrics">
+  Dictionary with mean value for each metric.
+</ResponseField>
+
+<ResponseField name="std_metrics" type="BinaryMetrics">
+  Dictionary with standard deviation for each metric.
+</ResponseField>
+
+### Usage
+
+```python
+from laft.metrics import binary_metrics, metric_mean_std
+import torch
+
+# Run experiment multiple times
+results = []
+for seed in range(5):
+    torch.manual_seed(seed)
+    scores = torch.randn(100)
+    labels = (scores > 0).float()
+    results.append(binary_metrics(scores, labels))
+
+# Aggregate results
+mean_metrics, std_metrics = metric_mean_std(results)
+
+print("Results across 5 runs:")
+for key in mean_metrics:
+    print(f"{key}: {mean_metrics[key]:.3f} ± {std_metrics[key]:.3f}")
+```
+
+---
+
+## Complete Example
+
+Evaluating an anomaly detection system:
+
+```python
+import torch
+from laft.metrics import binary_metrics
+from laft import knn
+
+# Simulate anomaly detection with k-NN
+torch.manual_seed(42)
+
+# Normal training data
+train_features = torch.randn(1000, 512)
+
+# Test data: normal + anomalies
+test_normal = torch.randn(100, 512)
+test_anomaly = torch.randn(50, 512) * 3  # Anomalies are further from normal
+
+test_features = torch.cat([test_normal, test_anomaly])
+test_labels = torch.cat([
+    torch.zeros(100),  # Normal
+    torch.ones(50),    # Anomaly
+])
+
+# Compute anomaly scores
+scores = knn(train_features, test_features, n_neighbors=30)
+
+# Evaluate
+metrics = binary_metrics(
+    scores,
+    test_labels,
+    types=("auroc", "auprc", "f1", "fpr95")
+)
+
+print("Anomaly Detection Results:")
+print(f"  AUROC:  {metrics['auroc']:.3f}")
+print(f"  AUPRC:  {metrics['auprc']:.3f}")
+print(f"  F1:     {metrics['f1']:.3f}")
+print(f"  FPR@95: {metrics['fpr95']:.3f}")
+```

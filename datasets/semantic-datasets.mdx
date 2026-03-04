@@ -1,0 +1,390 @@
+---
+title: Semantic Anomaly Datasets
+description: Learn about Color MNIST, Waterbirds, and CelebA datasets for semantic anomaly detection
+---
+
+# Semantic Anomaly Datasets
+
+Semantic anomaly datasets identify anomalies based on semantic attributes like color, object type, or facial features. LAFT provides three datasets designed for evaluating anomaly detection in semantic contexts.
+
+## Overview
+
+All semantic datasets inherit from `SemanticAnomalyDataset` and provide:
+
+- **Multi-attribute anomalies**: Each sample has multiple boolean attributes (False: normal, True: anomaly)
+- **Configurable definitions**: Define what constitutes an anomaly via config dictionaries
+- **Subset extraction**: Get normal-only samples with `get_normal_subset()`
+
+### Building a Semantic Dataset
+
+Use the `build_semantic_dataset()` function to load any semantic dataset:
+
+```python
+from laft.datasets import build_semantic_dataset
+from torchvision import transforms
+
+transform = transforms.Compose([
+    transforms.Resize(224),
+    transforms.ToTensor(),
+])
+
+dataset = build_semantic_dataset(
+    name="color_mnist",  # or "waterbirds", "celeba"
+    split="train",       # "train", "valid", or "test"
+    root="./data",       # data directory
+    transform=transform,
+    config=None,         # None for default config
+)
+
+image, attrs = dataset[0]
+print(f"Attributes: {attrs}")  # torch.Tensor of bools [num_attrs]
+```
+
+<Note>
+The `config` parameter is optional. Passing `None` uses the dataset's default anomaly definition.
+</Note>
+
+## Color MNIST
+
+Color MNIST combines digit classification with color attributes for multi-attribute anomaly detection.
+
+### Configuration
+
+Define anomalies by digit and color:
+
+```python
+from laft.datasets import build_semantic_dataset
+
+config = {
+    "number": {
+        0: False,  # Normal
+        1: False,  # Normal
+        2: False,  # Normal
+        3: False,  # Normal
+        4: False,  # Normal
+        5: True,   # Anomaly
+        6: True,   # Anomaly
+        7: True,   # Anomaly
+        8: True,   # Anomaly
+        9: True,   # Anomaly
+    },
+    "color": {
+        "red": False,   # Normal
+        "green": True,  # Anomaly
+        "blue": True,   # Anomaly
+    },
+}
+
+dataset = build_semantic_dataset(
+    name="color_mnist",
+    split="train",
+    root="./data",
+    config=config,
+    seed=42,  # For reproducible train/valid split
+)
+```
+
+### Dataset Details
+
+<CardGroup cols={2}>
+  <Card title="Attributes" icon="tags">
+    - **number**: Digit class (0-9)
+    - **color**: Red, green, or blue
+  </Card>
+  <Card title="Splits" icon="database">
+    - **train**: 45,000 images (4,500 per digit)
+    - **valid**: 9,000 images (900 per digit)
+    - **test**: 8,700 images (870 per digit)
+  </Card>
+</CardGroup>
+
+### Implementation Reference
+
+The coloring process pads MNIST images and applies RGB channels:
+
+```python
+# From laft/datasets/color_mnist.py:46-59
+def _coloring(image, color: str) -> Image.Image:
+    image = torch.constant_pad_nd(image, (28, 28, 28, 28), 0)
+    zero_image = torch.zeros_like(image)
+
+    if color == "red":
+        image = torch.stack([image, zero_image, zero_image], dim=-1)
+    elif color == "green":
+        image = torch.stack([zero_image, image, zero_image], dim=-1)
+    elif color == "blue":
+        image = torch.stack([zero_image, zero_image, image], dim=-1)
+
+    return Image.fromarray(image.numpy())
+```
+
+### Usage Example
+
+```python
+from laft.datasets import build_semantic_dataset
+from torch.utils.data import DataLoader
+
+# Create dataset
+dataset = build_semantic_dataset(
+    name="color_mnist",
+    split="train",
+    root="./data",
+)
+
+print(dataset)  # Shows distribution table
+
+# Create normal-only subset
+normal_dataset = dataset.get_normal_subset()
+
+# DataLoader
+loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+for images, attrs in loader:
+    # images: [batch_size, 3, 84, 84] (padded and colored)
+    # attrs: [batch_size, 2] (number, color)
+    number_anomaly = attrs[:, 0]  # True if digit is anomaly
+    color_anomaly = attrs[:, 1]   # True if color is anomaly
+    break
+```
+
+## Waterbirds
+
+Waterbirds dataset contains images of land birds and water birds in land and water backgrounds, designed to study spurious correlations.
+
+### Configuration
+
+```python
+config = {
+    "bird": {
+        "land": True,    # Anomaly
+        "water": False,  # Normal
+    },
+    "background": {
+        "land": True,    # Anomaly
+        "water": False,  # Normal
+    }
+}
+
+dataset = build_semantic_dataset(
+    name="waterbirds",
+    split="train",
+    root="./data",
+    config=config,
+)
+```
+
+### Dataset Details
+
+<CardGroup cols={2}>
+  <Card title="Attributes" icon="tags">
+    - **bird**: Land bird or water bird
+    - **background**: Land or water setting
+  </Card>
+  <Card title="Source" icon="image">
+    Based on Caltech-UCSD Birds 200 and Places datasets
+  </Card>
+</CardGroup>
+
+### Usage Example
+
+```python
+from laft.datasets import build_semantic_dataset
+
+dataset = build_semantic_dataset(
+    name="waterbirds",
+    split="test",
+    root="./data",
+)
+
+image, attrs = dataset[0]
+bird_is_anomaly = attrs[0]       # True if land bird (default)
+background_is_anomaly = attrs[1] # True if land background (default)
+
+# Check distribution
+print(dataset)
+```
+
+<Note>
+The Waterbirds dataset requires downloading from [the official source](https://github.com/kohpangwei/group_DRO). Place the extracted `waterbirds_v1.0` folder in your data directory.
+</Note>
+
+## CelebA
+
+CelebA provides facial attribute-based anomaly detection with 40 binary attributes per image.
+
+### Configuration
+
+Select any attributes from the [40 available attributes](/home/daytona/workspace/source/laft/datasets/celeba.py:12-53):
+
+```python
+config = {
+    "Blond_Hair": False,  # Blonde hair is normal
+    "Eyeglasses": True,   # Eyeglasses is anomaly
+}
+
+dataset = build_semantic_dataset(
+    name="celeba",
+    split="train",
+    root="./data",
+    config=config,
+)
+```
+
+### Available Attributes
+
+<Accordion title="View all 40 CelebA attributes">
+```python
+# From laft/datasets/celeba.py:12-53
+ATTRS = [
+    "5_o_Clock_Shadow", "Arched_Eyebrows", "Attractive",
+    "Bags_Under_Eyes", "Bald", "Bangs", "Big_Lips", "Big_Nose",
+    "Black_Hair", "Blond_Hair", "Blurry", "Brown_Hair",
+    "Bushy_Eyebrows", "Chubby", "Double_Chin", "Eyeglasses",
+    "Goatee", "Gray_Hair", "Heavy_Makeup", "High_Cheekbones",
+    "Male", "Mouth_Slightly_Open", "Mustache", "Narrow_Eyes",
+    "No_Beard", "Oval_Face", "Pale_Skin", "Pointy_Nose",
+    "Receding_Hairline", "Rosy_Cheeks", "Sideburns", "Smiling",
+    "Straight_Hair", "Wavy_Hair", "Wearing_Earrings",
+    "Wearing_Hat", "Wearing_Lipstick", "Wearing_Necklace",
+    "Wearing_Necktie", "Young",
+]
+```
+</Accordion>
+
+### Dataset Details
+
+<CardGroup cols={2}>
+  <Card title="Size" icon="database">
+    - **train**: 162,770 images
+    - **valid**: 19,867 images
+    - **test**: 19,962 images
+  </Card>
+  <Card title="Flexibility" icon="sliders">
+    Configure 1-40 attributes as anomalies. True = attribute present is anomaly, False = attribute absent is anomaly
+  </Card>
+</CardGroup>
+
+### Usage Example
+
+```python
+from laft.datasets import build_semantic_dataset
+
+# Multi-attribute anomaly detection
+config = {
+    "Eyeglasses": True,     # Wearing glasses is anomalous
+    "Bald": True,           # Being bald is anomalous
+    "Young": False,         # Not being young is anomalous
+}
+
+dataset = build_semantic_dataset(
+    name="celeba",
+    split="train",
+    root="./data",
+    config=config,
+)
+
+image, attrs = dataset[0]
+# attrs: [3] - one bool for each configured attribute
+print(f"Eyeglasses anomaly: {attrs[0]}")
+print(f"Bald anomaly: {attrs[1]}")
+print(f"Young anomaly: {attrs[2]}")
+```
+
+<Note>
+CelebA downloads automatically via `torchvision.datasets.CelebA`. The first run will download ~1.4GB of data.
+</Note>
+
+## Working with Attributes
+
+All semantic datasets return attribute tensors:
+
+```python
+from laft.datasets import build_semantic_dataset
+
+dataset = build_semantic_dataset(
+    name="color_mnist",
+    split="train",
+    root="./data",
+)
+
+image, attrs = dataset[0]
+
+# attrs is a boolean tensor: [num_attributes]
+print(f"Attribute names: {dataset.attr_names}")
+print(f"Attributes: {attrs}")
+
+# Check if any attribute is anomalous
+is_anomaly = attrs.any()
+
+# Get normal subset (no anomalies)
+normal_subset = dataset.get_normal_subset()
+print(f"Normal samples: {len(normal_subset)}")
+```
+
+### Dataset Statistics
+
+View the distribution of attribute combinations:
+
+```python
+dataset = build_semantic_dataset(
+    name="waterbirds",
+    split="test",
+    root="./data",
+)
+
+# Print formatted statistics table
+print(dataset)
+```
+
+Output shows percentage and count for each attribute combination:
+```
+╒═════════╤══════════════╤═════════╤═════════╕
+│ bird    │ background   │ per. %  │ num. #  │
+╞═════════╪══════════════╪═════════╪═════════╡
+│ False   │ False        │ 42.3    │ 2255    │
+├─────────┼──────────────┼─────────┼─────────┤
+│ False   │ True         │ 8.7     │ 466     │
+├─────────┼──────────────┼─────────┼─────────┤
+│ True    │ False        │ 7.2     │ 385     │
+├─────────┼──────────────┼─────────┼─────────┤
+│ True    │ True         │ 41.8    │ 2229    │
+╘═════════╧══════════════╧═════════╧═════════╛
+```
+
+## Why Semantic Datasets?
+
+Semantic datasets are valuable for anomaly detection because they:
+
+1. **Test conceptual understanding**: Models must learn semantic features, not just pixel patterns
+2. **Enable multi-attribute analysis**: Study how multiple factors contribute to anomalies
+3. **Support spurious correlation research**: Datasets like Waterbirds reveal when models rely on shortcuts
+4. **Provide interpretability**: Attribute-level labels explain why a sample is anomalous
+
+## Reference
+
+### API Summary
+
+```python
+from laft.datasets import build_semantic_dataset
+
+def build_semantic_dataset(
+    name: Literal["color_mnist", "waterbirds", "celeba"],
+    split: Literal["train", "valid", "test"],
+    root: str = "./data",
+    transform: Callable | None = None,
+    config: dict | None = None,  # None for default
+    **kwargs,  # seed for color_mnist
+) -> SemanticAnomalyDataset
+```
+
+### Dataset Returns
+
+```python
+image, attrs = dataset[index]
+# image: PIL.Image or transformed tensor
+# attrs: torch.Tensor of shape [num_attributes], dtype=torch.bool
+```
+
+<Card title="Source Code" icon="code" href="https://github.com/yourusername/laft/blob/main/laft/datasets/__init__.py">
+View the complete implementation in `laft/datasets/`
+</Card>

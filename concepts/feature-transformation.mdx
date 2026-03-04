@@ -1,0 +1,358 @@
+---
+title: 'Feature Transformation'
+description: 'Inner and orthogonal projections for language-guided feature manipulation'
+---
+
+## Overview
+
+Feature transformation is the core operation in LAFT that modifies image features based on a semantic concept subspace. LAFT provides two complementary projection operations:
+
+- **`inner()`**: Projects features **onto** the concept subspace (guides toward the concept)
+- **`orthogonal()`**: Projects features **away from** the concept subspace (ignores the concept)
+
+Both operations are implemented in `laft/laft.py` and use efficient linear algebra operations.
+
+## Inner Projection (Guide)
+
+The `inner()` function projects features onto the subspace spanned by concept vectors, amplifying the semantic concept in the feature representation.
+
+### Mathematical Formulation
+
+Given feature vectors $\mathbf{f} \in \mathbb{R}^d$ and concept basis $\mathbf{V} \in \mathbb{R}^{k \times d}$ (with orthonormal rows), the inner projection is:
+
+$$
+\mathbf{f}_{\text{inner}} = \mathbf{f} \mathbf{V}^T \mathbf{V}
+$$
+
+This is equivalent to:
+$$
+\mathbf{f}_{\text{inner}} = \sum_{i=1}^{k} (\mathbf{f} \cdot \mathbf{v}_i) \mathbf{v}_i
+$$
+
+where $\mathbf{v}_i$ are the rows of $\mathbf{V}$ (basis vectors).
+
+### Implementation
+
+From `laft/laft.py:6-18`:
+
+```python
+def inner(
+    features: Tensor,  # [batch_size, feature_size]
+    vectors: Tensor,   # [feature_size] or [num_vectors, feature_size]
+    *,
+    basis: bool = True,
+) -> Tensor:           # [batch_size, feature_size]
+    if vectors.dim() == 1:
+        vectors = vectors.unsqueeze(dim=0)
+        scales = torch.inner(features, vectors) / vectors.square().sum(dim=1)
+        return scales @ vectors
+    else:
+        vector_basis = vectors if basis else torch.linalg.svd(vectors, full_matrices=False)[2]
+        return (features @ vector_basis.T) @ vector_basis
+```
+
+### Parameters
+
+<ParamField path="features" type="Tensor" required>
+  Image features to transform. Shape: `[batch_size, feature_size]`
+</ParamField>
+
+<ParamField path="vectors" type="Tensor" required>
+  Concept vectors defining the subspace. Can be:
+  - Single vector: `[feature_size]`
+  - Multiple vectors: `[num_vectors, feature_size]`
+</ParamField>
+
+<ParamField path="basis" type="bool" default="True">
+  If `True`, assumes `vectors` are already orthonormal (from PCA). If `False`, computes orthonormal basis via SVD.
+</ParamField>
+
+### Usage Example
+
+```python
+import laft
+import torch
+
+# Load model and data
+model, data = laft.get_clip_cached_features(
+    "ViT-B-16-quickgelu:dfn2b",
+    "waterbirds",
+    splits=["train", "test"]
+)
+
+train_features, _ = data["train"]
+test_features, test_attrs = data["test"]
+
+# Get prompts for guiding toward bird type
+prompts = laft.prompts.get_prompts("waterbirds", "guide_bird")
+
+# Build concept subspace
+text_features = model.encode_text(prompts["all"])
+pair_diffs = laft.prompt_pair(text_features)
+concept_basis = laft.pca(pair_diffs, n_components=24)
+
+# Apply inner projection to guide toward bird concept
+guided_train = laft.inner(train_features, concept_basis)
+guided_test = laft.inner(test_features, concept_basis)
+
+# Use k-NN for anomaly scoring
+scores = laft.knn(guided_train, guided_test, n_neighbors=30)
+```
+
+<Note>
+  When `basis=True` (default), the function assumes vectors are orthonormal and skips SVD computation for efficiency. The `pca()` function returns orthonormal bases, so this is the recommended usage.
+</Note>
+
+## Orthogonal Projection (Ignore)
+
+The `orthogonal()` function projects features onto the orthogonal complement of the concept subspace, removing the semantic concept from the representation.
+
+### Mathematical Formulation
+
+The orthogonal projection removes all components in the concept subspace:
+
+$$
+\mathbf{f}_{\text{orth}} = \mathbf{f} - \mathbf{f} \mathbf{V}^T \mathbf{V}
+$$
+
+This ensures $\mathbf{f}_{\text{orth}} \perp \mathbf{v}_i$ for all basis vectors $\mathbf{v}_i$.
+
+### Implementation
+
+From `laft/laft.py:21-37`:
+
+```python
+def orthogonal(
+    features: Tensor,  # [batch_size, feature_size]
+    vectors: Tensor,   # [feature_size] or [num_vectors, feature_size]
+    *,
+    normalize: bool = False,
+    basis: bool = True,
+) -> Tensor:           # [batch_size, feature_size]
+    if vectors.dim() == 1:
+        vectors = vectors.unsqueeze(dim=0)
+
+    vector_basis = vectors if basis else torch.linalg.svd(vectors, full_matrices=False)[2]
+    proj = features - (features @ vector_basis.T) @ vector_basis
+
+    if normalize:
+        proj = F.normalize(proj, dim=-1)
+
+    return proj
+```
+
+### Parameters
+
+<ParamField path="features" type="Tensor" required>
+  Image features to transform. Shape: `[batch_size, feature_size]`
+</ParamField>
+
+<ParamField path="vectors" type="Tensor" required>
+  Concept vectors defining the subspace to project away from. Can be:
+  - Single vector: `[feature_size]`
+  - Multiple vectors: `[num_vectors, feature_size]`
+</ParamField>
+
+<ParamField path="normalize" type="bool" default="False">
+  If `True`, normalizes the projected features to unit length. Useful when the projection significantly reduces feature magnitude.
+</ParamField>
+
+<ParamField path="basis" type="bool" default="True">
+  If `True`, assumes `vectors` are already orthonormal. If `False`, computes orthonormal basis via SVD.
+</ParamField>
+
+### Usage Example
+
+```python
+import laft
+
+# Load model and data
+model, data = laft.get_clip_cached_features(
+    "ViT-B-16-quickgelu:dfn2b",
+    "waterbirds",
+    splits=["train", "test"]
+)
+
+train_features, _ = data["train"]
+test_features, test_attrs = data["test"]
+
+# Get prompts for ignoring background
+prompts = laft.prompts.get_prompts("waterbirds", "ignore_back")
+
+# Build concept subspace
+text_features = model.encode_text(prompts["all"])
+pair_diffs = laft.prompt_pair(text_features)
+concept_basis = laft.pca(pair_diffs, n_components=48)
+
+# Apply orthogonal projection to ignore background concept
+ignored_train = laft.orthogonal(train_features, concept_basis, normalize=True)
+ignored_test = laft.orthogonal(test_features, concept_basis, normalize=True)
+
+# Use k-NN for anomaly scoring
+scores = laft.knn(ignored_train, ignored_test, n_neighbors=30)
+```
+
+<Warning>
+  Orthogonal projection can significantly reduce feature magnitude, especially when removing high-variance concepts. Consider using `normalize=True` to maintain consistent scale.
+</Warning>
+
+## Single Vector vs. Subspace Projection
+
+Both `inner()` and `orthogonal()` handle single vectors differently from multi-vector subspaces:
+
+### Single Vector (`vectors.dim() == 1`)
+
+For a single concept vector $\mathbf{v}$:
+
+```python
+# Inner projection: project onto v
+scale = (features @ v) / (v @ v)
+projection = scale * v
+
+# Orthogonal projection: remove v component
+projection = features - scale * v
+```
+
+### Subspace (`vectors.dim() == 2`)
+
+For multiple vectors forming a basis $\mathbf{V}$:
+
+```python
+# Inner projection: project onto span(V)
+projection = (features @ V.T) @ V
+
+# Orthogonal projection: remove all components in span(V)
+projection = features - (features @ V.T) @ V
+```
+
+## Choosing Between Inner and Orthogonal
+
+The choice depends on your anomaly detection objective:
+
+<AccordionGroup>
+  <Accordion title="When to use Inner Projection">
+    Use `inner()` when you want to **emphasize** a semantic concept:
+    
+    - **Guide toward attribute**: Amplify specific features (e.g., bird type, object category)
+    - **Focus detection**: Make the model more sensitive to variations in a particular concept
+    - **Feature extraction**: Extract only the components related to a concept of interest
+    
+    **Example**: Detecting bird species while ignoring background variations.
+    
+    ```python
+    # Emphasize bird type features
+    concept_basis = laft.pca(bird_prompt_diffs)
+    guided_features = laft.inner(features, concept_basis)
+    ```
+  </Accordion>
+  
+  <Accordion title="When to use Orthogonal Projection">
+    Use `orthogonal()` when you want to **suppress** a semantic concept:
+    
+    - **Ignore spurious correlations**: Remove confounding factors (e.g., background, lighting)
+    - **Invariant features**: Make detection robust to nuisance variations
+    - **Debiasing**: Remove unwanted biases from representations
+    
+    **Example**: Detecting anomalies in birds regardless of background (water vs. land).
+    
+    ```python
+    # Suppress background features
+    concept_basis = laft.pca(background_prompt_diffs)
+    debiased_features = laft.orthogonal(features, concept_basis, normalize=True)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Real-World Example from Scripts
+
+From `scripts/semantic/laft.py:42-54`, here's how projections are used in practice:
+
+```python
+# Determine projection type based on guidance parameter
+# "guide_*" uses inner, "ignore_*" uses orthogonal
+projection = laft.inner if args.guidance.startswith("guide") else laft.orthogonal
+
+# Get text features and build concept subspace
+features = model.encode_text(prompts[args.prompt])
+pairs = laft.prompt_pair(features)
+concept_basis = laft.pca(pairs)
+
+# Transform features with varying number of components
+for n_components in range(2, 385):
+    train_laft = projection(train_features, concept_basis[:n_components])
+    test_laft = projection(test_features, concept_basis[:n_components])
+    
+    # Compute anomaly scores
+    scores = laft.knn(train_laft, test_laft, n_neighbors=30)
+```
+
+This code iterates over different numbers of principal components to find the optimal subspace dimensionality.
+
+## Projection Properties
+
+### Inner Projection
+
+<ResponseField name="Idempotent" type="property">
+  Applying inner projection twice gives the same result: $(\mathbf{f}\mathbf{V}^T\mathbf{V})\mathbf{V}^T\mathbf{V} = \mathbf{f}\mathbf{V}^T\mathbf{V}$
+</ResponseField>
+
+<ResponseField name="Reduces Dimensionality" type="property">
+  The effective dimensionality is reduced to $k$ (the number of basis vectors)
+</ResponseField>
+
+<ResponseField name="Preserves Concept" type="property">
+  Maximally retains information about the concept while discarding orthogonal information
+</ResponseField>
+
+### Orthogonal Projection
+
+<ResponseField name="Idempotent" type="property">
+  Applying orthogonal projection twice gives the same result
+</ResponseField>
+
+<ResponseField name="Orthogonality" type="property">
+  Result is orthogonal to all basis vectors: $(\mathbf{f} - \mathbf{f}\mathbf{V}^T\mathbf{V}) \cdot \mathbf{v}_i = 0$
+</ResponseField>
+
+<ResponseField name="May Reduce Magnitude" type="property">
+  Can significantly decrease $\|\mathbf{f}_{\text{orth}}\|$ if the concept explains high variance
+</ResponseField>
+
+## Performance Considerations
+
+<Tip>
+  **Efficiency**: Both projections are matrix multiplications with complexity $O(bkd)$ where:
+  - $b$ = batch size
+  - $k$ = number of concept vectors
+  - $d$ = feature dimensionality
+  
+  For CLIP ViT-B/16 with $d=512$ and $k=24$, this is very fast even for large batches.
+</Tip>
+
+<Note>
+  **Basis Assumption**: Setting `basis=True` (default) assumes vectors are orthonormal. If you construct vectors manually (not from `pca()`), either:
+  1. Orthonormalize them first, or
+  2. Set `basis=False` to compute SVD (slower but handles any vectors)
+</Note>
+
+## Subspace Dimensionality
+
+The number of concept vectors ($k$) controls the expressiveness of the transformation:
+
+- **Low $k$ (2-10)**: Captures only the most dominant semantic directions
+- **Medium $k$ (10-50)**: Balances concept specificity and generalization
+- **High $k$ (50+)**: Captures fine-grained variations but may include noise
+
+**Best Practice**: Use cross-validation or grid search to find optimal $k$ for your task, as shown in the script example above.
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Concept Subspace" icon="cube" href="/concepts/concept-subspace">
+    Learn how to construct the concept basis using `prompt_pair()` and `pca()`
+  </Card>
+  
+  <Card title="Overview" icon="book" href="/concepts/overview">
+    Understand the full LAFT methodology and workflow
+  </Card>
+</CardGroup>

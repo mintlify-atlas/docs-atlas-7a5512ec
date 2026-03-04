@@ -1,0 +1,288 @@
+---
+title: 'Installation'
+description: 'Set up your environment to use LAFT'
+---
+
+## Prerequisites
+
+LAFT requires:
+- Python 3.11 or higher
+- CUDA-capable GPU (recommended for performance)
+- 8GB+ GPU memory for most experiments
+
+## Environment Setup
+
+<Steps>
+  <Step title="Create a Conda Environment">
+    We recommend using conda to manage your Python environment:
+
+    ```bash
+    conda create -n laft python=3.11
+    conda activate laft
+    ```
+
+    <Note>
+    While conda is recommended, you can also use virtualenv or other environment managers.
+    </Note>
+  </Step>
+
+  <Step title="Install PyTorch">
+    Install PyTorch from the [official website](https://pytorch.org/get-started/locally/) first to ensure proper CUDA support:
+
+    ```bash
+    # For CUDA 12.1 (adjust based on your CUDA version)
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+    ```
+
+    <Warning>
+    Make sure to select the correct PyTorch version for your CUDA installation.
+    </Warning>
+  </Step>
+
+  <Step title="Install Dependencies">
+    Clone the repository and install required packages:
+
+    ```bash
+    git clone https://github.com/yuneg11/laft.git
+    cd laft
+    pip install -r requirements.txt
+    ```
+  </Step>
+</Steps>
+
+## Dependencies
+
+The `requirements.txt` includes:
+
+```txt
+torch >= 2.3.0
+torchvision >= 0.18.0
+open_clip_torch >= 2.20.0
+scikit-learn >= 1.5.0
+tabulate >= 0.9.0
+torcheval >= 0.0.6
+```
+
+### Tested Versions
+
+LAFT has been tested with:
+- `torch==2.5.1`
+- `torchvision==0.20.1`
+- `torcheval==0.0.7`
+- `open_clip_torch==2.29.0`
+
+## Dataset Setup
+
+LAFT supports multiple datasets for semantic and industrial anomaly detection.
+
+<Tabs>
+  <Tab title="Semantic Datasets">
+    ### Directory Structure
+
+    Organize datasets in the `data/` directory:
+
+    ```
+    laft/
+    ├── data/
+    │   ├── MNIST/              # ColorMNIST (auto-downloaded)
+    │   ├── waterbirds_v1.0/    # Waterbirds dataset
+    │   └── celeba/             # CelebA dataset
+    ```
+
+    ### MNIST (ColorMNIST)
+
+    The MNIST dataset will be automatically downloaded when first used:
+
+    ```python
+    import laft
+
+    dataset = laft.build_semantic_dataset(
+        name="color_mnist",
+        split="train",
+        root="./data",
+        seed=42
+    )
+    ```
+
+    ### Waterbirds
+
+    Download from the [Waterbirds repository](https://github.com/kohpangwei/group_DRO) and extract to `data/waterbirds_v1.0/`.
+
+    ### CelebA
+
+    Download from the [CelebA website](http://mmlab.ie.cuhk.edu.hk/projects/CelebA.html) and extract to `data/celeba/`.
+  </Tab>
+
+  <Tab title="Industrial Datasets">
+    ### MVTec AD
+
+    Download the [MVTec Anomaly Detection dataset](https://www.mvtec.com/company/research/datasets/mvtec-ad):
+
+    ```bash
+    # Extract to data/mvtec_anomaly_detection/
+    wget https://www.mvtec.com/company/research/datasets/mvtec-ad/downloads/mvtec_anomaly_detection.tar.xz
+    tar -xvf mvtec_anomaly_detection.tar.xz -C data/
+    ```
+
+    Expected structure:
+    ```
+    data/mvtec_anomaly_detection/
+    ├── bottle/
+    ├── cable/
+    ├── capsule/
+    └── ...
+    ```
+
+    ### VisA
+
+    Download the [VisA dataset](https://amazon-visual-anomaly.s3.us-west-2.amazonaws.com/VisA_20220922.tar):
+
+    ```bash
+    # Extract to data/VisA_20220922/
+    wget https://amazon-visual-anomaly.s3.us-west-2.amazonaws.com/VisA_20220922.tar
+    tar -xvf VisA_20220922.tar -C data/
+    ```
+  </Tab>
+</Tabs>
+
+## Checkpoint Downloads
+
+For baseline comparisons, download pre-trained checkpoints:
+
+<AccordionGroup>
+  <Accordion title="CLIPN Checkpoints">
+    Download from the [CLIPN repository](https://github.com/xmed-lab/CLIPN):
+
+    ```bash
+    mkdir -p checkpoints/clipn
+    ```
+
+    Download each repeat checkpoint:
+    - [repeat1](https://drive.google.com/drive/folders/1CRIKr0vwrvK4Mc63zfhg2o8cbEGct4oF?usp=sharing) → `checkpoints/clipn/repeat1.pt`
+    - [repeat2](https://drive.google.com/drive/folders/1eNaaPaRWz0La8_qQliX30A4I7Y44yDMY?usp=sharing) → `checkpoints/clipn/repeat2.pt`
+    - [repeat3](https://drive.google.com/drive/folders/1qF4Pm1JSL3P0H4losPSmvldubFj91dew?usp=sharing) → `checkpoints/clipn/repeat3.pt`
+
+    <Note>
+    CLIPN checkpoints are only needed for running baseline comparisons, not for core LAFT functionality.
+    </Note>
+  </Accordion>
+
+  <Accordion title="InCTRL Checkpoints">
+    Download from the [InCTRL repository](https://github.com/mala-lab/InCTRL):
+
+    ```bash
+    mkdir -p checkpoints/inctrl
+    ```
+
+    Download from [Google Drive](https://drive.google.com/drive/folders/1McmfxF8_H0BeRvcJ_poGIB-ATQCDDEIa?usp=sharing):
+
+    **MVTec AD**:
+    - [Download link](https://drive.google.com/file/d/1zEHsbbuUgBC4yuDu3g23wbUGmWmVyDRQ/view?usp=drive_link)
+    - Extract to: `checkpoints/inctrl/mvtec{2,4,8}.pt`
+
+    **VisA**:
+    - [Download link](https://drive.google.com/file/d/1uDOnyRAlwtDukfhglR8YxidsnlezBD6I/view?usp=drive_link)
+    - Extract to: `checkpoints/inctrl/visa{2,4,8}.pt`
+  </Accordion>
+</AccordionGroup>
+
+## Final Directory Structure
+
+After completing installation, your directory should look like:
+
+```
+laft/
+├── checkpoints/
+│   ├── clipn/
+│   │   ├── repeat1.pt
+│   │   ├── repeat2.pt
+│   │   └── repeat3.pt
+│   └── inctrl/
+│       ├── mvtec2.pt
+│       ├── mvtec4.pt
+│       ├── mvtec8.pt
+│       ├── visa2.pt
+│       ├── visa4.pt
+│       └── visa8.pt
+├── data/
+│   ├── MNIST/
+│   ├── waterbirds_v1.0/
+│   ├── celeba/
+│   ├── mvtec_anomaly_detection/
+│   └── VisA_20220922/
+├── laft/
+├── scripts/
+├── requirements.txt
+└── README.md
+```
+
+## Verification
+
+Verify your installation:
+
+```python
+import torch
+import laft
+
+print(f"PyTorch version: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+
+# Test loading CLIP
+model, transform = laft.load_clip("ViT-B-16-quickgelu:dfn2b")
+print("LAFT installation successful!")
+```
+
+Expected output:
+```
+PyTorch version: 2.5.1
+CUDA available: True
+LAFT installation successful!
+```
+
+<Warning>
+If CUDA is not available but you have a GPU, check your PyTorch installation and CUDA drivers.
+</Warning>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="CUDA out of memory">
+    If you encounter OOM errors:
+
+    ```python
+    import torch
+    torch.set_grad_enabled(False)  # Disable autograd to save memory
+    ```
+
+    Or reduce batch size in your experiments.
+  </Accordion>
+
+  <Accordion title="OpenCLIP download errors">
+    If model downloads fail, manually specify the cache directory:
+
+    ```python
+    model, transform = laft.load_clip(
+        "ViT-B-16-quickgelu:dfn2b",
+        download_root="./checkpoints/open_clip"
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Dataset not found errors">
+    Ensure datasets are in the correct directory structure and paths match the expected locations:
+
+    ```python
+    dataset = laft.build_semantic_dataset(
+        name="color_mnist",
+        split="train",
+        root="./data",  # Adjust if your data directory is elsewhere
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+  Run your first LAFT example to verify everything works correctly
+</Card>

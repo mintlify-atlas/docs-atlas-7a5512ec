@@ -1,0 +1,231 @@
+---
+title: CLIP Model
+description: Load and use CLIP models for image and text encoding
+---
+
+The `laft.clip` module provides an enhanced interface for loading and using OpenCLIP models with improved tokenization and encoding capabilities.
+
+## load_clip
+
+Loads a CLIP model with preprocessing transforms.
+
+```python
+def load_clip(
+    name: str,
+    device: str | torch.device = "cuda" if torch.cuda.is_available() else "cpu",
+    download_root: str | None = "./checkpoints/open_clip",
+    **kwargs,
+) -> tuple[CLIP | CustomTextCLIP | CoCa, Callable[[Image], Tensor]]
+```
+
+<ParamField path="name" type="str" required>
+  Model name in one of two formats:
+  - **Model only**: `"ViT-B-32"` (uses default pretrained weights)
+  - **Model with pretrained**: `"ViT-B-32:laion2b_s34b_b79k"` (specific checkpoint)
+  
+  See [OpenCLIP model list](https://github.com/mlfoundations/open_clip#pretrained-models) for available models.
+</ParamField>
+
+<ParamField path="device" type="str | torch.device" default="'cuda' if available else 'cpu'">
+  Device to load the model on.
+</ParamField>
+
+<ParamField path="download_root" type="str | None" default="'./checkpoints/open_clip'">
+  Directory to cache downloaded model checkpoints. If `None`, uses default cache location.
+</ParamField>
+
+<ParamField path="**kwargs" type="dict">
+  Additional arguments passed to `open_clip.create_model_and_transforms()`.
+</ParamField>
+
+<ResponseField name="model" type="CLIP | CustomTextCLIP | CoCa">
+  The loaded CLIP model with enhanced encoding methods.
+</ResponseField>
+
+<ResponseField name="transform" type="Callable[[Image], Tensor]">
+  Image preprocessing function that transforms PIL Images into tensors suitable for the model.
+</ResponseField>
+
+### Usage
+
+Load and use various CLIP models:
+
+```python
+from laft.clip import load_clip
+from PIL import Image
+
+# Load default CLIP model
+model, preprocess = load_clip("ViT-B-32")
+
+# Load specific pretrained checkpoint
+model, preprocess = load_clip("ViT-L-14:openai")
+
+# Load on CPU
+model, preprocess = load_clip("ViT-B-16", device="cpu")
+
+# Preprocess an image
+image = Image.open("example.jpg")
+image_tensor = preprocess(image).unsqueeze(0)  # Add batch dimension
+```
+
+### Supported Models
+
+Common CLIP architectures:
+- `ViT-B-32`, `ViT-B-16`, `ViT-L-14` - Vision Transformer models
+- `RN50`, `RN101` - ResNet-based models
+- `coca_ViT-L-14` - CoCa (Contrastive Captioners) models
+
+Add pretrained dataset suffix for specific checkpoints:
+- `:openai` - Original OpenAI CLIP weights
+- `:laion2b_s34b_b79k` - LAION-2B trained
+- `:laion400m_e32` - LAION-400M trained
+
+---
+
+## CLIP Model Interface
+
+The returned CLIP model provides enhanced encoding methods.
+
+### encode_image
+
+Encodes images into embedding vectors.
+
+```python
+model.encode_image(
+    image: torch.Tensor,
+    normalize: bool = False,
+) -> torch.Tensor
+```
+
+<ParamField path="image" type="torch.Tensor">
+  Preprocessed image tensor with shape:
+  - `[batch_size, 3, height, width]` for batches
+  - `[3, height, width]` for single images (will be unsqueezed)
+</ParamField>
+
+<ParamField path="normalize" type="bool" default="False">
+  If `True`, normalizes embeddings to unit length (L2 normalization).
+</ParamField>
+
+<ResponseField name="embeddings" type="torch.Tensor">
+  Image embeddings with shape `[batch_size, embedding_dim]`.
+</ResponseField>
+
+#### Usage
+
+```python
+from laft.clip import load_clip
+from PIL import Image
+import torch
+
+model, preprocess = load_clip("ViT-B-32")
+
+# Encode a single image
+image = preprocess(Image.open("cat.jpg")).unsqueeze(0)
+embedding = model.encode_image(image, normalize=True)
+
+# Encode a batch of images
+images = torch.stack([
+    preprocess(Image.open(f"image_{i}.jpg"))
+    for i in range(10)
+])
+batch_embeddings = model.encode_image(images, normalize=True)
+print(batch_embeddings.shape)  # [10, 512] for ViT-B-32
+```
+
+---
+
+### encode_text
+
+Encodes text prompts into embedding vectors with support for ensemble encoding.
+
+```python
+model.encode_text(
+    text: IntTensor | LongTensor | Sequence[IntTensor | LongTensor] | Sequence[str] | Sequence[Sequence[str]],
+    normalize: bool = False
+) -> Tensor
+```
+
+<ParamField path="text" type="IntTensor | LongTensor | Sequence[IntTensor | LongTensor] | Sequence[str] | Sequence[Sequence[str]]">
+  Text input in various formats:
+  - **Tokenized tensors**: Pre-tokenized text as `IntTensor` or `LongTensor`
+  - **String list**: `["a photo of a cat", "a photo of a dog"]`
+  - **Ensemble list**: `[["a cat", "a feline"], ["a dog", "a canine"]]` - each inner list is averaged into one embedding
+</ParamField>
+
+<ParamField path="normalize" type="bool" default="False">
+  If `True`, normalizes embeddings to unit length.
+</ParamField>
+
+<ResponseField name="embeddings" type="torch.Tensor">
+  Text embeddings with shape:
+  - `[num_texts, embedding_dim]` for simple inputs
+  - `[num_ensembles, embedding_dim]` for ensemble inputs (each ensemble averaged)
+</ResponseField>
+
+#### Usage
+
+```python
+from laft.clip import load_clip
+
+model, _ = load_clip("ViT-B-32")
+
+# Encode simple text prompts
+texts = ["a photo of a cat", "a photo of a dog"]
+text_embeddings = model.encode_text(texts, normalize=True)
+print(text_embeddings.shape)  # [2, 512]
+
+# Encode with ensemble (average multiple descriptions)
+ensemble_texts = [
+    ["a cat", "a feline", "a kitty"],  # Averaged into one embedding
+    ["a dog", "a canine", "a puppy"],  # Averaged into one embedding
+]
+ensemble_embeddings = model.encode_text(ensemble_texts, normalize=True)
+print(ensemble_embeddings.shape)  # [2, 512]
+
+# Use pre-tokenized input
+from open_clip import tokenize
+tokens = tokenize(["a photo of a cat", "a photo of a dog"])
+embeddings = model.encode_text(tokens, normalize=True)
+```
+
+---
+
+## Complete Example
+
+Image-text similarity computation:
+
+```python
+from laft.clip import load_clip
+from laft import cosine_similarity
+from PIL import Image
+import torch
+
+# Load model
+model, preprocess = load_clip("ViT-L-14:openai")
+
+# Prepare images
+images = torch.stack([
+    preprocess(Image.open("cat.jpg")),
+    preprocess(Image.open("dog.jpg")),
+])
+
+# Prepare text
+texts = ["a photo of a cat", "a photo of a dog"]
+
+# Encode
+with torch.no_grad():
+    image_features = model.encode_image(images, normalize=True)
+    text_features = model.encode_text(texts, normalize=True)
+
+# Compute similarity
+similarity = cosine_similarity(image_features, text_features)
+print(similarity)
+# Expected: [[high, low],   # cat image vs cat/dog text
+#            [low, high]]   # dog image vs cat/dog text
+
+# Get predictions
+probs = similarity.softmax(dim=-1)
+print(f"Cat image is {probs[0, 0]:.1%} cat")
+print(f"Dog image is {probs[1, 1]:.1%} dog")
+```

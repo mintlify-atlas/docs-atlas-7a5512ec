@@ -1,0 +1,576 @@
+---
+title: Evaluation
+description: Metrics and evaluation strategies for LAFT anomaly detection
+---
+
+# Evaluation
+
+LAFT provides comprehensive evaluation metrics for binary anomaly detection through the `laft.metrics` module.
+
+## Overview
+
+The evaluation system supports:
+
+- **Standard metrics**: AUROC, AUPRC, F1, FPR95
+- **Automatic thresholding**: Optimal threshold selection based on F1 score
+- **Multi-seed evaluation**: Mean and standard deviation across runs
+- **Result tables**: Formatted output with `build_table()`
+
+## Core Metrics
+
+### `binary_auroc(input, target)`
+
+Area Under the Receiver Operating Characteristic curve.
+
+```python
+import laft
+import torch
+
+# Anomaly scores and ground truth labels
+scores = torch.tensor([0.1, 0.3, 0.8, 0.9, 0.2])
+labels = torch.tensor([0, 0, 1, 1, 0])
+
+auroc = laft.binary_auroc(scores, labels)
+print(f"AUROC: {auroc:.3f}")  # Higher is better (0-1)
+```
+
+**Parameters:**
+- `input` (Tensor): Anomaly scores `[N]`
+- `target` (Tensor): Binary labels `[N]` (0=normal, 1=anomaly)
+
+**Returns:**
+- `float`: AUROC score (0.0 to 1.0, higher is better)
+
+### `binary_auprc(input, target)`
+
+Area Under the Precision-Recall Curve.
+
+```python
+auprc = laft.binary_auprc(scores, labels)
+print(f"AUPRC: {auprc:.3f}")  # Higher is better (0-1)
+```
+
+**Parameters:**
+- `input` (Tensor): Anomaly scores `[N]`
+- `target` (Tensor): Binary labels `[N]`
+
+**Returns:**
+- `float`: AUPRC score (0.0 to 1.0, higher is better)
+
+### `binary_f1_score(input, target, threshold="auto")`
+
+F1 score for binary classification.
+
+```python
+# Automatic threshold selection (optimal for F1)
+f1 = laft.binary_f1_score(scores, labels, threshold="auto")
+print(f"F1: {f1:.3f}")
+
+# Manual threshold
+f1_manual = laft.binary_f1_score(scores, labels, threshold=0.5)
+print(f"F1 (threshold=0.5): {f1_manual:.3f}")
+```
+
+**Parameters:**
+- `input` (Tensor): Anomaly scores `[N]`
+- `target` (Tensor): Binary labels `[N]`
+- `threshold` (float | "auto"): Classification threshold or "auto" for optimal
+
+**Returns:**
+- `float`: F1 score (0.0 to 1.0, higher is better)
+
+### `binary_fpr95(input, target)`
+
+False Positive Rate at 95% True Positive Rate.
+
+```python
+fpr95 = laft.binary_fpr95(scores, labels)
+print(f"FPR95: {fpr95:.3f}")  # Lower is better (0-1)
+```
+
+**Parameters:**
+- `input` (Tensor): Anomaly scores `[N]`
+- `target` (Tensor): Binary labels `[N]`
+
+**Returns:**
+- `float`: FPR at 95% recall (0.0 to 1.0, lower is better)
+
+<Info>
+  FPR95 measures the false positive rate when the detector is configured to catch 95% of anomalies. Lower values indicate better discrimination.
+</Info>
+
+### `binary_accuracy(input, target, threshold="auto")`
+
+Classification accuracy.
+
+```python
+acc = laft.binary_accuracy(scores, labels, threshold="auto")
+print(f"Accuracy: {acc:.3f}")
+```
+
+**Parameters:**
+- `input` (Tensor): Anomaly scores `[N]`
+- `target` (Tensor): Binary labels `[N]`
+- `threshold` (float | "auto"): Classification threshold
+
+**Returns:**
+- `float`: Accuracy (0.0 to 1.0, higher is better)
+
+## Comprehensive Evaluation
+
+### `binary_metrics(input, target, threshold="auto", types=(...))`
+
+Compute multiple metrics at once.
+
+<Tabs>
+  <Tab title="Single Run">
+    ```python
+    import laft
+    import torch
+    
+    scores = torch.randn(1000)  # Anomaly scores
+    labels = torch.randint(0, 2, (1000,))  # Ground truth
+    
+    # Compute all default metrics
+    metrics = laft.binary_metrics(scores, labels)
+    
+    print(f"AUROC: {metrics['auroc']:.3f}")
+    print(f"AUPRC: {metrics['auprc']:.3f}")
+    print(f"FPR95: {metrics['fpr95']:.3f}")
+    ```
+  </Tab>
+  
+  <Tab title="Multi-Seed">
+    ```python
+    import laft
+    import torch
+    
+    # Multiple runs (e.g., different random seeds)
+    scores_list = [
+        torch.randn(1000) for _ in range(5)
+    ]
+    labels = torch.randint(0, 2, (1000,))
+    
+    # Compute mean ± std across runs
+    mean_metrics, std_metrics = laft.binary_metrics(scores_list, labels)
+    
+    print(f"AUROC: {mean_metrics['auroc']:.3f} ± {std_metrics['auroc']:.3f}")
+    print(f"AUPRC: {mean_metrics['auprc']:.3f} ± {std_metrics['auprc']:.3f}")
+    ```
+  </Tab>
+  
+  <Tab title="Custom Metrics">
+    ```python
+    # Specify which metrics to compute
+    metrics = laft.binary_metrics(
+        scores, labels,
+        types=("auroc", "auprc", "f1", "accuracy")
+    )
+    
+    print(metrics.keys())
+    # dict_keys(['auroc', 'auprc', 'f1', 'accuracy'])
+    ```
+  </Tab>
+</Tabs>
+
+**Parameters:**
+- `input` (Tensor | Sequence[Tensor]): Anomaly scores or list of score tensors
+- `target` (Tensor): Binary labels `[N]`
+- `threshold` (float | "auto", optional): Threshold for F1/accuracy
+- `types` (Sequence[str], optional): Metrics to compute. Default: `("auroc", "auprc", "fpr95")`
+
+**Returns:**
+- Single run: `BinaryMetrics` dictionary
+- Multi-seed: Tuple of `(mean_metrics, std_metrics)` dictionaries
+
+## Optimal Threshold Selection
+
+### `optimal_threshold(input, target)`
+
+Find the threshold that maximizes F1 score.
+
+```python
+import laft
+import torch
+
+scores = torch.randn(1000)
+labels = torch.randint(0, 2, (1000,))
+
+# Find optimal threshold
+threshold = laft.optimal_threshold(scores, labels)
+print(f"Optimal threshold: {threshold:.3f}")
+
+# Use it for F1 score
+f1 = laft.binary_f1_score(scores, labels, threshold=threshold)
+print(f"F1 at optimal threshold: {f1:.3f}")
+```
+
+**Parameters:**
+- `input` (Tensor): Anomaly scores `[N]`
+- `target` (Tensor): Binary labels `[N]`
+
+**Returns:**
+- `float`: Threshold value that maximizes F1 score
+
+<Tip>
+  The "auto" threshold option in `binary_f1_score()` and `binary_accuracy()` automatically calls `optimal_threshold()` internally.
+</Tip>
+
+## Complete Workflow Example
+
+```python
+import laft
+import torch
+
+torch.set_grad_enabled(False)
+
+# Load data and model
+model, data = laft.get_clip_cached_features(
+    "ViT-B-16-quickgelu:dfn2b",
+    "color_mnist",
+    splits=["train", "test"],
+    dataset_kwargs={"seed": 42}
+)
+
+train_features, _ = data["train"]
+test_features, test_attrs = data["test"]
+
+# Setup prompts
+attend_name, ignore_name, attend_labels, ignore_labels = \
+    laft.prompts.get_labels("color_mnist", test_attrs, "guide_number")
+
+prompts = laft.prompts.get_prompts("color_mnist", "guide_number")
+
+# Build concept subspace
+text_features = model.encode_text(prompts["all"])
+pair_diffs = laft.prompt_pair(text_features)
+concept_basis = laft.pca(pair_diffs, n_components=24)
+
+# Transform features
+train_guided = laft.inner(train_features, concept_basis)
+test_guided = laft.inner(test_features, concept_basis)
+
+# Compute anomaly scores
+scores = laft.knn(train_guided, test_guided, n_neighbors=30)
+
+# Comprehensive evaluation
+metrics = laft.binary_metrics(
+    scores,
+    attend_labels,
+    types=("auroc", "auprc", "f1", "fpr95")
+)
+
+print(f"Attend ({attend_name}):")
+for name, value in metrics.items():
+    print(f"  {name.upper()}: {value:.3f}")
+```
+
+**Output:**
+```
+Attend (number):
+  AUROC: 0.892
+  AUPRC: 0.856
+  F1: 0.801
+  FPR95: 0.213
+```
+
+## Result Tables
+
+### `build_table(metrics, group_headers=None, types=(...))`
+
+Create formatted tables for results presentation.
+
+```python
+import laft
+
+# Organize metrics by category and method
+metrics = {
+    "number": {
+        "Guide/24": {"auroc": 0.892, "auprc": 0.856, "fpr95": 0.213},
+        "Guide/50": {"auroc": 0.901, "auprc": 0.868, "fpr95": 0.198},
+    },
+    "color": {
+        "Guide/24": {"auroc": 0.756, "auprc": 0.712, "fpr95": 0.334},
+        "Guide/50": {"auroc": 0.769, "auprc": 0.725, "fpr95": 0.318},
+    }
+}
+
+# Build formatted table
+table = laft.utils.build_table(
+    metrics,
+    group_headers=("Method", "Comp."),
+    types=("auroc", "auprc", "fpr95")
+)
+
+print(table)
+```
+
+**Output:**
+```
+Method  Comp.      Number              Color
+                   AUROC  AUPRC  FPR95  AUROC  AUPRC  FPR95
+Guide   24          89.2   85.6   21.3   75.6   71.2   33.4
+Guide   50          90.1   86.8   19.8   76.9   72.5   31.8
+```
+
+### Multi-Seed Tables
+
+For experiments with multiple seeds:
+
+```python
+import laft
+import numpy as np
+
+# Collect results from multiple seeds
+metrics = {
+    "number": {
+        "LAFT/4-shot": [
+            {"auroc": 0.892, "auprc": 0.856},
+            {"auroc": 0.898, "auprc": 0.862},
+            {"auroc": 0.885, "auprc": 0.849},
+            {"auroc": 0.901, "auprc": 0.868},
+            {"auroc": 0.894, "auprc": 0.859},
+        ],
+    }
+}
+
+# Build table with mean ± std
+table = laft.utils.build_table(
+    metrics,
+    group_headers=("Method", "#Shot"),
+    types=("auroc", "auprc")
+)
+
+print(table)
+```
+
+**Output:**
+```
+Method  #Shot      Number
+                   AUROC        AUPRC
+LAFT    4-shot      89.4 ± 0.6   85.9 ± 0.7
+```
+
+### `save_table(table, path)`
+
+Save table to file.
+
+```python
+import laft
+
+table = laft.utils.build_table(metrics)
+laft.utils.save_table(table, "results/color_mnist/laft.txt")
+```
+
+## Component Sweep Evaluation
+
+Evaluate performance across different numbers of principal components:
+
+```python
+import laft
+import torch
+
+torch.set_grad_enabled(False)
+
+# Load data
+model, data = laft.get_clip_cached_features(
+    "ViT-B-16-quickgelu:dfn2b", "waterbirds", splits=["train", "test"]
+)
+train_features, _ = data["train"]
+test_features, test_attrs = data["test"]
+
+# Setup
+attend_name, _, attend_labels, _ = \
+    laft.prompts.get_labels("waterbirds", test_attrs, "guide_bird")
+prompts = laft.prompts.get_prompts("waterbirds", "guide_bird")
+
+text_features = model.encode_text(prompts["all"])
+pair_diffs = laft.prompt_pair(text_features)
+concept_basis = laft.pca(pair_diffs)  # Compute all components
+
+# Sweep over component counts
+results = {}
+for n_components in range(2, 101):
+    # Use first n_components
+    train_guided = laft.inner(train_features, concept_basis[:n_components])
+    test_guided = laft.inner(test_features, concept_basis[:n_components])
+    
+    scores = laft.knn(train_guided, test_guided, n_neighbors=30)
+    metrics = laft.binary_metrics(scores, attend_labels)
+    
+    results[f"Guide/{n_components}"] = metrics
+
+# Build comprehensive table
+metrics_dict = {attend_name: results}
+table = laft.utils.build_table(
+    metrics_dict,
+    group_headers=("Method", "Comp."),
+    types=("auroc", "auprc", "fpr95")
+)
+
+print(table)
+laft.utils.save_table(table, "results/waterbirds/component_sweep.txt")
+```
+
+## Statistical Analysis
+
+### `mean_std(values)`
+
+Compute mean and standard deviation.
+
+```python
+import laft
+
+auroc_values = [0.892, 0.898, 0.885, 0.901, 0.894]
+mean, std = laft.mean_std(auroc_values)
+
+print(f"AUROC: {mean:.3f} ± {std:.3f}")
+# AUROC: 0.894 ± 0.006
+```
+
+### `metric_mean_std(metrics)`
+
+Compute mean and std across metric dictionaries.
+
+```python
+import laft
+
+# Results from 5 seeds
+metrics_list = [
+    {"auroc": 0.892, "auprc": 0.856, "fpr95": 0.213},
+    {"auroc": 0.898, "auprc": 0.862, "fpr95": 0.198},
+    {"auroc": 0.885, "auprc": 0.849, "fpr95": 0.225},
+    {"auroc": 0.901, "auprc": 0.868, "fpr95": 0.189},
+    {"auroc": 0.894, "auprc": 0.859, "fpr95": 0.206},
+]
+
+mean_metrics, std_metrics = laft.metric_mean_std(metrics_list)
+
+print(f"AUROC: {mean_metrics['auroc']:.3f} ± {std_metrics['auroc']:.3f}")
+print(f"AUPRC: {mean_metrics['auprc']:.3f} ± {std_metrics['auprc']:.3f}")
+print(f"FPR95: {mean_metrics['fpr95']:.3f} ± {std_metrics['fpr95']:.3f}")
+```
+
+## Pixel-Level Evaluation
+
+For industrial anomaly detection with pixel-level annotations:
+
+```python
+import laft
+import torch
+from torch.utils.data import DataLoader
+
+# Assume heatmaps and masks are available
+heatmaps = torch.randn(100, 224, 224)  # Anomaly heatmaps [N, H, W]
+masks = torch.randint(0, 2, (100, 224, 224))  # Ground truth masks [N, H, W]
+
+# Pixel-level AUROC
+pixel_auroc = laft.binary_auroc(heatmaps, masks)
+print(f"Pixel-level AUROC: {pixel_auroc:.3f}")
+
+# Or use binary_metrics
+pixel_metrics = laft.binary_metrics(heatmaps, masks, types=["auroc"])
+print(f"Pixel AUROC: {pixel_metrics['auroc']:.3f}")
+```
+
+<Info>
+  The metrics automatically handle both image-level `[N]` and pixel-level `[N, H, W]` tensors.
+</Info>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Device Alignment">
+    The metrics automatically align tensor devices, so you don't need to manually move tensors:
+    
+    ```python
+    scores = torch.randn(1000).cuda()
+    labels = torch.randint(0, 2, (1000,))  # CPU
+    
+    # Works automatically
+    auroc = laft.binary_auroc(scores, labels)
+    ```
+  </Accordion>
+  
+  <Accordion title="Multi-Seed Evaluation">
+    For robust evaluation, run experiments with multiple seeds:
+    
+    ```python
+    results = []
+    for seed in range(5):
+        # Set seed, run experiment
+        scores = run_experiment(seed)
+        metrics = laft.binary_metrics(scores, labels)
+        results.append(metrics)
+    
+    mean, std = laft.metric_mean_std(results)
+    print(f"AUROC: {mean['auroc']:.3f} ± {std['auroc']:.3f}")
+    ```
+  </Accordion>
+  
+  <Accordion title="Table Formatting">
+    Use `build_table()` for consistent, publication-ready tables:
+    
+    ```python
+    # Control formatting
+    table = laft.utils.build_table(
+        metrics,
+        group_headers=("Method", "Config"),
+        types=("auroc", "auprc"),
+        meanfmt="5.1f",  # 5 digits, 1 decimal for mean
+        stdfmt="3.1f"    # 3 digits, 1 decimal for std
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  **Threshold Selection**: Use `threshold="auto"` for F1 and accuracy during evaluation. Don't tune thresholds on test data!
+</Warning>
+
+## Metric Interpretation
+
+<CardGroup cols={2}>
+  <Card title="AUROC" icon="chart-line">
+    Measures overall discrimination ability. Good for comparing methods. Not affected by class imbalance.
+    
+    **Range**: 0.0-1.0 (higher is better)
+    
+    **Interpretation**: 0.5 = random, 1.0 = perfect
+  </Card>
+  
+  <Card title="AUPRC" icon="chart-area">
+    Better for imbalanced datasets. Focuses on precision-recall trade-off.
+    
+    **Range**: 0.0-1.0 (higher is better)
+    
+    **Use**: When anomalies are rare
+  </Card>
+  
+  <Card title="FPR95" icon="exclamation-triangle">
+    False positive rate at 95% recall. Lower is better.
+    
+    **Range**: 0.0-1.0 (lower is better)
+    
+    **Use**: When high recall is required
+  </Card>
+  
+  <Card title="F1 Score" icon="balance-scale">
+    Harmonic mean of precision and recall. Requires threshold selection.
+    
+    **Range**: 0.0-1.0 (higher is better)
+    
+    **Use**: For deployment decisions
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Usage" icon="rocket" href="/guides/basic-usage">
+    Learn the complete LAFT workflow from start to finish
+  </Card>
+  <Card title="Prompts" icon="message" href="/guides/prompts">
+    Understand how to use and create prompts for concept subspaces
+  </Card>
+</CardGroup>
